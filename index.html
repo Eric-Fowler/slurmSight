@@ -831,6 +831,13 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
 
   </main>
 </div>
+        <div class="setting-group">
+          <label>SOUND NOTIFICATIONS</label>
+          <div class="setting-row">
+            <label class="toggle"><input type="checkbox" id="cfg-sounds" checked/><span class="slider-knob"></span></label>
+            <span>Play pleasant sounds on queue updates</span>
+          </div>
+        </div>
 
 <!-- ── Job Detail Modal ── -->
 <div id="job-modal" class="modal-overlay">
@@ -928,6 +935,7 @@ let cfg = {
   refreshInterval: 5,
   demoMode: true,
   animations: true,
+  sounds: true,
 };
 try { Object.assign(cfg, JSON.parse(localStorage.getItem(CFG_KEY) || '{}')); } catch(_){}
 
@@ -945,6 +953,79 @@ let scanWaveFrame = null;
 // Helpers
 // ─────────────────────────────────────────
 const $ = id => document.getElementById(id);
+
+// ─────────────────────────────────────────
+// Sound Notifications
+// ─────────────────────────────────────────
+function playSound(type='update') {
+  if (!cfg.sounds) return;
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+
+    if (type === 'running') {
+      // Success sound: ascending two-note chime
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc1.frequency.value = 523.25; // C5
+      osc2.frequency.value = 659.25; // E5
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(audioCtx.destination);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+      osc1.start(now);
+      osc1.stop(now + 0.15);
+      osc2.start(now + 0.1);
+      osc2.stop(now + 0.3);
+    } else if (type === 'completed') {
+      // Completion sound: three ascending notes
+      const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+      notes.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.value = freq;
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        const startTime = now + (i * 0.08);
+        gain.gain.setValueAtTime(0.12, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.2);
+        osc.start(startTime);
+        osc.stop(startTime + 0.2);
+      });
+    } else if (type === 'failed' || type === 'cancelled') {
+      // Warning sound: lower descending notes
+      const notes = [349.23, 261.63]; // F4, C4
+      notes.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.value = freq;
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        const startTime = now + (i * 0.1);
+        gain.gain.setValueAtTime(0.12, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.25);
+        osc.start(startTime);
+        osc.stop(startTime + 0.25);
+      });
+    } else {
+      // Default update sound: single pleasant note
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.value = 440; // A4
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    }
+  } catch(e) {
+    // Silently fail if Web Audio API not available
+  }
+}
+
 const el = (tag, attrs={}, ...children) => {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -1189,8 +1270,12 @@ function renderQueue(jobs) {
       toast(`Job ${j.jobid} (${j.name}) appeared in queue`, 'info', '🆕');
     } else if (prev.state !== j.state) {
       // State change
-      if (j.state === 'RUNNING') toast(`Job ${j.jobid} (${j.name}) is now RUNNING on ${j.nodelist}`, 'success', '▶️');
-      else if (j.state === 'COMPLETING') toast(`Job ${j.jobid} (${j.name}) is COMPLETING`, 'info', '🔵');
+      if (j.state === 'RUNNING') {
+        toast(`Job ${j.jobid} (${j.name}) is now RUNNING on ${j.nodelist}`, 'success', '▶️');
+        playSound('running');
+      } else if (j.state === 'COMPLETING') {
+        toast(`Job ${j.jobid} (${j.name}) is COMPLETING`, 'info', '🔵');
+      }
     }
   }
   for (const [jid, prev] of Object.entries(prevJobs)) {
@@ -1199,12 +1284,16 @@ function renderQueue(jobs) {
       const s = prev.state;
       if (s === 'RUNNING' || s === 'COMPLETING') {
         toast(`Job ${jid} (${prev.name}) COMPLETED`, 'success', '✅', 5000);
+        playSound('completed');
       } else if (s === 'FAILED') {
         toast(`Job ${jid} (${prev.name}) FAILED`, 'danger', '💥', 6000);
+        playSound('failed');
       } else if (s === 'CANCELLED' || s === 'CANCELED') {
         toast(`Job ${jid} (${prev.name}) was CANCELLED`, 'warn', '🚫');
+        playSound('cancelled');
       } else if (s === 'TIMEOUT') {
         toast(`Job ${jid} (${prev.name}) TIMED OUT`, 'warn', '⏱', 6000);
+        playSound('failed');
       }
     }
   }
@@ -1503,6 +1592,7 @@ $('btn-save').onclick = () => {
   cfg.serverUrl = $('cfg-server').value.trim() || 'http://localhost:8787';
   cfg.refreshInterval = parseInt($('cfg-refresh').value) || 5;
   cfg.animations = $('cfg-anim').checked;
+    cfg.sounds = $('cfg-sounds').checked;
   localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
   // Restart cycle
   startRefreshCycle();
@@ -1854,6 +1944,7 @@ setStatus(cfg.demoMode ? 'demo' : 'connecting');
 fetchQueue();
 setupRowClickHandlers();
 startRefreshCycle();
+$('cfg-sounds').checked = cfg.sounds;
 
 // Greet
 setTimeout(() => {

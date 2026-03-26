@@ -9,6 +9,8 @@ Then open: http://localhost:8787
 import http.server
 import json
 import os
+import signal
+import socket
 import subprocess
 import sys
 from urllib.parse import urlparse
@@ -123,11 +125,31 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+class ReuseAddrHTTPServer(http.server.HTTPServer):
+    """HTTPServer with SO_REUSEADDR so the port is freed immediately on stop."""
+    allow_reuse_address = True
+
+
 if __name__ == "__main__":
-    srv = http.server.HTTPServer(("", PORT), SlurmSightHandler)
+    # Kill any stale process already bound to the port
+    try:
+        with socket.create_connection(("127.0.0.1", PORT), timeout=1):
+            result = subprocess.run(
+                ["fuser", "-k", f"{PORT}/tcp"],
+                capture_output=True, timeout=5,
+            )
+            import time; time.sleep(0.5)  # give the OS a moment to release the port
+    except (ConnectionRefusedError, OSError):
+        pass  # port already free
+
+    srv = ReuseAddrHTTPServer(("", PORT), SlurmSightHandler)
     print(f"✨  slurmSight  →  http://localhost:{PORT}")
     print("    Press Ctrl+C to stop\n")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
-        print("\n👋  Server stopped.")
+        print("\n👋  Shutting down…")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        print("👋  Server stopped.")
