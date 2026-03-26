@@ -52,6 +52,10 @@ ROUTES = {
     "/api/sdiag": lambda: run_slurm(["sdiag"]),
 }
 
+def cancel_job(jobid):
+    """Cancel a Slurm job by ID."""
+    return run_slurm(["scancel", str(jobid)], timeout=10)
+
 
 class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
 
@@ -67,7 +71,8 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
     def do_GET(self):
@@ -91,6 +96,26 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
 
         if path in ROUTES:
             self._send_json(ROUTES[path]())
+        else:
+            self._send_json({"error": "Not found"}, 404)
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+
+        if path == "/api/scancel":
+            # Parse JSON body
+            try:
+                content_len = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_len).decode("utf-8")
+                data = json.loads(body)
+                jobid = data.get("jobid")
+                if not jobid:
+                    self._send_json({"ok": False, "err": "Missing jobid"}, 400)
+                else:
+                    result = cancel_job(jobid)
+                    self._send_json(result)
+            except Exception as e:
+                self._send_json({"ok": False, "err": str(e)}, 400)
         else:
             self._send_json({"error": "Not found"}, 404)
 
