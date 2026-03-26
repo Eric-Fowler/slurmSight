@@ -9,6 +9,8 @@ Then open: http://localhost:8787
 import http.server
 import json
 import os
+import signal
+import socket
 import subprocess
 import sys
 from urllib.parse import urlparse
@@ -39,7 +41,7 @@ ROUTES = {
         "squeue", "--me", "--noheader",
         "--format=%i\t%j\t%P\t%T\t%M\t%l\t%D\t%C\t%m\t%N\t%r\t%Q\t%S",
     ]),
-    "/api/sshare": lambda: run_slurm(["sshare", "-a"]),
+    "/api/sshare": lambda: run_slurm(["sshare", "-U"]),
     "/api/sinfo": lambda: run_slurm([
         "sinfo", "--noheader",
         "--format=%P\t%a\t%l\t%D\t%T\t%N\t%C\t%G",
@@ -51,6 +53,10 @@ ROUTES = {
     ]),
     "/api/sdiag": lambda: run_slurm(["sdiag"]),
 }
+
+def cancel_job(jobid):
+    """Cancel a Slurm job by ID."""
+    return run_slurm(["scancel", str(jobid)], timeout=10)
 
 
 class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
@@ -67,7 +73,8 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
     def do_GET(self):
@@ -94,15 +101,55 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
         else:
             self._send_json({"error": "Not found"}, 404)
 
+    def do_POST(self):
+        path = urlparse(self.path).path
+
+        if path == "/api/scancel":
+            # Parse JSON body
+            try:
+                content_len = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_len).decode("utf-8")
+                data = json.loads(body)
+                jobid = data.get("jobid")
+                if not jobid:
+                    self._send_json({"ok": False, "err": "Missing jobid"}, 400)
+                else:
+                    result = cancel_job(jobid)
+                    self._send_json(result)
+            except Exception as e:
+                self._send_json({"ok": False, "err": str(e)}, 400)
+        else:
+            self._send_json({"error": "Not found"}, 404)
+
     def log_message(self, fmt, *args):  # suppress default per-request logging; startup messages are printed below
         pass
 
 
+class ReuseAddrHTTPServer(http.server.HTTPServer):
+    """HTTPServer with SO_REUSEADDR so the port is freed immediately on stop."""
+    allow_reuse_address = True
+
+
 if __name__ == "__main__":
-    srv = http.server.HTTPServer(("", PORT), SlurmSightHandler)
+    # Kill any stale process already bound to the port
+    try:
+        with socket.create_connection(("127.0.0.1", PORT), timeout=1):
+            result = subprocess.run(
+                ["fuser", "-k", f"{PORT}/tcp"],
+                capture_output=True, timeout=5,
+            )
+            import time; time.sleep(0.5)  # give the OS a moment to release the port
+    except (ConnectionRefusedError, OSError):
+        pass  # port already free
+
+    srv = ReuseAddrHTTPServer(("", PORT), SlurmSightHandler)
     print(f"✨  slurmSight  →  http://localhost:{PORT}")
     print("    Press Ctrl+C to stop\n")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
-        print("\n👋  Server stopped.")
+        print("\n👋  Shutting down…")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        print("👋  Server stopped.")
