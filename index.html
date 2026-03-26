@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>slurmSight — Mission Control</title>
+<style>
+/* ─────────────────────────────────────────────
+   Variables & Reset
+───────────────────────────────────────────── */
+:root{
+  --bg:#060618;--bg2:#0b0b22;
+  --surf:rgba(255,255,255,.04);--surf2:rgba(255,255,255,.07);
+  --border:rgba(80,180,255,.18);--border2:rgba(80,180,255,.35);
+  --primary:#00e5ff;--primary-dim:rgba(0,229,255,.25);
+  --success:#00ff9d;--success-dim:rgba(0,255,157,.22);
+  --warn:#ffcc00;--warn-dim:rgba(255,204,0,.22);
+  --danger:#ff4466;--danger-dim:rgba(255,68,102,.22);
+  --purple:#a855f7;--purple-dim:rgba(168,85,247,.22);
+  --orange:#ff9500;
+  --text:#ddeeff;--text-dim:#7799bb;--text-dimmer:#445577;
+  --font-mono:'Cascadia Code','Fira Code','Consolas',monospace;
+  --font-ui:system-ui,-apple-system,sans-serif;
+  --radius:10px;
+  --glow-primary:0 0 18px rgba(0,229,255,.45);
+  --glow-success:0 0 18px rgba(0,255,157,.45);
+  --glow-danger:0 0 18px rgba(255,68,102,.45);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);
+  font-family:var(--font-ui);font-size:14px;overflow:hidden}
+body{display:flex;flex-direction:column}
+
+/* ─────────────────────────────────────────────
+   Background Canvases
+───────────────────────────────────────────── */
+#starfield,#particles{
+  position:fixed;inset:0;pointer-events:none;z-index:0;
+}
+#particles{z-index:999}
+
+/* ─────────────────────────────────────────────
+   App Shell
+───────────────────────────────────────────── */
+#app{
+  position:relative;z-index:1;
+  display:flex;flex-direction:column;height:100vh;overflow:hidden;
+}
+
+/* ─────────────────────────────────────────────
+   Header
+───────────────────────────────────────────── */
+#header{
+  display:flex;align-items:center;gap:16px;
+  padding:10px 20px;
+  background:rgba(6,6,24,.85);
+  border-bottom:1px solid var(--border);
+  backdrop-filter:blur(12px);
+  flex-shrink:0;
+}
+.logo{display:flex;align-items:baseline;gap:8px;flex-shrink:0}
+.logo-icon{font-size:22px;animation:rocket-bob 3s ease-in-out infinite}
+@keyframes rocket-bob{0%,100%{transform:translateY(0) rotate(-15deg)}50%{transform:translateY(-4px) rotate(-15deg)}}
+.logo-text{
+  font-family:var(--font-mono);font-size:22px;font-weight:700;
+  letter-spacing:4px;
+  background:linear-gradient(135deg,var(--primary),var(--purple));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  text-shadow:none;filter:drop-shadow(0 0 10px var(--primary-dim));
+}
+.logo-sub{
+  font-size:9px;letter-spacing:3px;color:var(--text-dim);
+  font-family:var(--font-mono);text-transform:uppercase;
+}
+.header-center{flex:1;display:flex;justify-content:center}
+#conn-status{
+  padding:4px 14px;border-radius:20px;font-size:11px;
+  font-family:var(--font-mono);letter-spacing:2px;
+  border:1px solid currentColor;transition:all .4s;
+}
+#conn-status.ok{color:var(--success);background:var(--success-dim);box-shadow:var(--glow-success)}
+#conn-status.demo{color:var(--purple);background:var(--purple-dim)}
+#conn-status.err{color:var(--danger);background:var(--danger-dim)}
+#conn-status.connecting{color:var(--warn);background:var(--warn-dim);animation:pulse-border 1s ease-in-out infinite}
+@keyframes pulse-border{0%,100%{opacity:.6}50%{opacity:1}}
+.header-right{
+  display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0
+}
+#clock{
+  font-family:var(--font-mono);font-size:18px;font-weight:600;
+  color:var(--primary);text-shadow:var(--glow-primary);
+  letter-spacing:2px;
+}
+#uptime-label{font-size:10px;color:var(--text-dimmer);letter-spacing:1px}
+
+/* ─────────────────────────────────────────────
+   Navigation
+───────────────────────────────────────────── */
+#nav{
+  display:flex;gap:2px;padding:8px 16px;
+  background:rgba(6,6,24,.7);border-bottom:1px solid var(--border);
+  flex-shrink:0;overflow-x:auto;
+}
+.tab{
+  padding:7px 18px;border-radius:8px;border:1px solid transparent;
+  background:transparent;color:var(--text-dim);cursor:pointer;
+  font-family:var(--font-mono);font-size:12px;letter-spacing:1.5px;
+  white-space:nowrap;transition:all .25s;
+}
+.tab:hover{background:var(--surf);color:var(--text);border-color:var(--border)}
+.tab.active{
+  background:var(--primary-dim);color:var(--primary);
+  border-color:var(--primary);box-shadow:var(--glow-primary);
+}
+.tab-badge{
+  display:inline-block;min-width:18px;height:18px;
+  background:var(--danger);color:#fff;border-radius:9px;
+  font-size:10px;text-align:center;line-height:18px;
+  margin-left:5px;animation:badge-pop .3s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes badge-pop{0%{transform:scale(0)}100%{transform:scale(1)}}
+
+/* ─────────────────────────────────────────────
+   Main / Panels
+───────────────────────────────────────────── */
+#main{flex:1;overflow:hidden;position:relative}
+.panel{
+  display:none;flex-direction:column;gap:14px;
+  height:100%;overflow-y:auto;padding:16px;
+}
+.panel.active{display:flex}
+/* custom scrollbar */
+.panel::-webkit-scrollbar{width:6px}
+.panel::-webkit-scrollbar-track{background:transparent}
+.panel::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ─────────────────────────────────────────────
+   Stats Bar
+───────────────────────────────────────────── */
+.stats-row{display:flex;gap:10px;flex-wrap:wrap}
+.stat-card{
+  flex:1;min-width:100px;
+  padding:12px 16px;border-radius:var(--radius);
+  background:var(--surf);border:1px solid var(--border);
+  display:flex;flex-direction:column;gap:4px;
+  transition:all .3s;
+}
+.stat-card:hover{background:var(--surf2);border-color:var(--border2)}
+.stat-value{
+  font-family:var(--font-mono);font-size:28px;font-weight:700;
+  line-height:1;transition:all .3s;
+}
+.stat-label{font-size:10px;letter-spacing:2px;color:var(--text-dim)}
+.stat-card.running .stat-value{color:var(--success);text-shadow:var(--glow-success)}
+.stat-card.pending .stat-value{color:var(--warn)}
+.stat-card.other  .stat-value{color:var(--orange)}
+.stat-card.total  .stat-value{color:var(--primary);text-shadow:var(--glow-primary)}
+.stat-value.bump{animation:stat-bump .35s cubic-bezier(.34,1.56,.64,1)}
+@keyframes stat-bump{0%{transform:scale(1.4)}100%{transform:scale(1)}}
+
+/* ─────────────────────────────────────────────
+   Refresh Bar
+───────────────────────────────────────────── */
+.refresh-bar{
+  display:flex;align-items:center;gap:12px;
+  padding:8px 14px;border-radius:var(--radius);
+  background:var(--surf);border:1px solid var(--border);
+}
+.timer-wrap{position:relative;width:34px;height:34px;flex-shrink:0}
+#refresh-svg{width:34px;height:34px;transform:rotate(-90deg)}
+#refresh-circle{transition:stroke-dashoffset .9s linear}
+#refresh-countdown{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-mono);font-size:10px;color:var(--primary);
+  transform:none;
+}
+.refresh-label{font-size:11px;color:var(--text-dim);letter-spacing:1px}
+.refresh-bar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.last-update{font-size:11px;color:var(--text-dimmer);font-family:var(--font-mono)}
+.btn-sm{
+  padding:5px 14px;border-radius:6px;border:1px solid var(--primary);
+  background:var(--primary-dim);color:var(--primary);cursor:pointer;
+  font-family:var(--font-mono);font-size:11px;letter-spacing:1px;
+  transition:all .2s;
+}
+.btn-sm:hover{background:var(--primary);color:var(--bg);box-shadow:var(--glow-primary)}
+.btn-sm:active{transform:scale(.96)}
+
+/* ─────────────────────────────────────────────
+   Animated Table Container
+───────────────────────────────────────────── */
+.table-outer{
+  position:relative;border-radius:calc(var(--radius) + 2px);
+  padding:2px;overflow:hidden;flex:1;min-height:0;
+}
+/* Rotating neon border beam */
+.table-outer::before{
+  content:'';position:absolute;inset:-1px;border-radius:inherit;
+  background:conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    var(--primary) 60deg,
+    transparent 120deg,
+    transparent 180deg,
+    var(--purple) 240deg,
+    transparent 300deg,
+    transparent 360deg
+  );
+  animation:spin-beam 4s linear infinite;
+  z-index:0;
+}
+@keyframes spin-beam{to{transform:rotate(360deg)}}
+.table-container{
+  position:relative;z-index:1;border-radius:var(--radius);
+  background:var(--bg2);overflow:auto;height:100%;
+}
+.table-container::-webkit-scrollbar{width:6px;height:6px}
+.table-container::-webkit-scrollbar-track{background:transparent}
+.table-container::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ─────────────────────────────────────────────
+   Tables
+───────────────────────────────────────────── */
+table{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:12px}
+thead tr{
+  position:sticky;top:0;z-index:2;
+  background:rgba(11,11,34,.95);
+  border-bottom:1px solid var(--border2);
+}
+th{
+  padding:10px 14px;text-align:left;
+  font-size:10px;letter-spacing:2px;color:var(--text-dim);
+  white-space:nowrap;
+}
+th:first-child{padding-left:16px}
+td{
+  padding:9px 14px;border-bottom:1px solid rgba(80,180,255,.07);
+  vertical-align:middle;white-space:nowrap;transition:background .3s;
+}
+td:first-child{padding-left:16px}
+tbody tr{transition:background .25s,opacity .4s,transform .4s}
+tbody tr:hover{background:rgba(0,229,255,.05)}
+
+/* ─────────────────────────────────────────────
+   Table Scanner Wave (JS-driven)
+───────────────────────────────────────────── */
+tbody tr.wave-scan{
+  background:linear-gradient(90deg,
+    transparent 0%, rgba(0,229,255,.07) 50%, transparent 100%
+  ) !important;
+  transition:background .15s;
+}
+
+/* ─────────────────────────────────────────────
+   Job State Badges
+───────────────────────────────────────────── */
+.state-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 10px;border-radius:12px;font-size:10px;
+  letter-spacing:1px;font-weight:700;white-space:nowrap;
+}
+.state-badge .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.state-RUNNING{background:var(--success-dim);color:var(--success);border:1px solid var(--success)}
+.state-RUNNING .dot{background:var(--success);animation:pulse-dot 1.2s ease-in-out infinite}
+.state-PENDING{background:var(--warn-dim);color:var(--warn);border:1px solid var(--warn)}
+.state-PENDING .dot{background:var(--warn);animation:spin-dot 1.5s linear infinite}
+.state-COMPLETING{background:rgba(0,170,255,.2);color:#00aaff;border:1px solid #00aaff}
+.state-COMPLETING .dot{background:#00aaff;animation:pulse-dot .8s ease-in-out infinite}
+.state-COMPLETED{background:rgba(100,120,140,.15);color:#778899;border:1px solid #556677}
+.state-FAILED{background:var(--danger-dim);color:var(--danger);border:1px solid var(--danger)}
+.state-FAILED .dot{background:var(--danger);animation:flicker .5s ease-in-out infinite}
+.state-CANCELLED,.state-CANCELED{background:rgba(255,100,50,.15);color:#ff6432;border:1px solid #ff6432}
+.state-SUSPENDED{background:var(--purple-dim);color:var(--purple);border:1px solid var(--purple)}
+.state-TIMEOUT{background:rgba(255,100,0,.2);color:var(--orange);border:1px solid var(--orange)}
+.state-UNKNOWN,.state-default{background:var(--surf);color:var(--text-dim);border:1px solid var(--border)}
+
+@keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+@keyframes spin-dot{0%{transform:rotate(0deg);border-radius:50%}50%{border-radius:2px}100%{transform:rotate(360deg);border-radius:50%}}
+@keyframes flicker{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ─────────────────────────────────────────────
+   Row Transition Animations
+───────────────────────────────────────────── */
+.row-enter{
+  animation:row-in .5s cubic-bezier(.22,1,.36,1) forwards;
+}
+@keyframes row-in{
+  0%{opacity:0;transform:translateY(-14px);background:rgba(0,229,255,.15)}
+  60%{background:rgba(0,229,255,.08)}
+  100%{opacity:1;transform:translateY(0);background:transparent}
+}
+.row-exit{
+  animation:row-out .7s ease-in forwards;pointer-events:none;
+}
+@keyframes row-out{
+  0%{opacity:1;transform:translateX(0)}
+  100%{opacity:0;transform:translateX(40px);max-height:0;padding:0}
+}
+.row-flash-success{animation:flash-green .6s ease-out}
+@keyframes flash-green{
+  0%{background:rgba(0,255,157,.35)}50%{background:rgba(0,255,157,.18)}100%{background:transparent}
+}
+.row-flash-danger{animation:flash-red .6s ease-out}
+@keyframes flash-red{
+  0%{background:rgba(255,68,102,.5);transform:translateX(-6px)}
+  25%{transform:translateX(6px)}
+  50%{background:rgba(255,68,102,.2);transform:translateX(-3px)}
+  75%{transform:translateX(3px)}
+  100%{background:transparent;transform:translateX(0)}
+}
+.row-glow-running td{box-shadow:inset 0 0 20px rgba(0,255,157,.08)}
+
+/* ─────────────────────────────────────────────
+   Empty State
+───────────────────────────────────────────── */
+.empty-state{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  padding:60px 20px;color:var(--text-dimmer);font-family:var(--font-mono);
+}
+.empty-icon{font-size:40px;opacity:.5;animation:float-idle 3s ease-in-out infinite}
+@keyframes float-idle{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+/* ─────────────────────────────────────────────
+   Panel Header
+───────────────────────────────────────────── */
+.panel-hdr{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+}
+.panel-hdr h2{
+  font-family:var(--font-mono);font-size:13px;letter-spacing:3px;
+  color:var(--text-dim);
+}
+.panel-hdr-right{margin-left:auto;display:flex;gap:8px}
+
+/* ─────────────────────────────────────────────
+   Mono Output (sshare / sdiag)
+───────────────────────────────────────────── */
+.mono-output{
+  padding:16px;font-family:var(--font-mono);font-size:12px;
+  color:var(--text);white-space:pre;overflow:auto;
+  line-height:1.6;
+}
+.mono-output .hi-bar{color:var(--primary)}
+.mono-output .hi-user{color:var(--success)}
+
+/* ─────────────────────────────────────────────
+   Fairshare Bars
+───────────────────────────────────────────── */
+.share-bar-wrap{display:flex;align-items:center;gap:8px;min-width:120px}
+.share-bar{
+  flex:1;height:8px;background:var(--surf2);border-radius:4px;
+  overflow:hidden;border:1px solid var(--border);
+}
+.share-bar-fill{
+  height:100%;border-radius:4px;transition:width .6s ease-out;
+}
+
+/* ─────────────────────────────────────────────
+   Node State Colors
+───────────────────────────────────────────── */
+.node-idle{color:var(--success)}
+.node-alloc,.node-allocated{color:var(--warn)}
+.node-mix,.node-mixed{color:var(--orange)}
+.node-down,.node-drain,.node-draining{color:var(--danger)}
+.node-comp,.node-completing{color:#00aaff}
+
+/* ─────────────────────────────────────────────
+   History State Colors
+───────────────────────────────────────────── */
+.hist-COMPLETED{color:var(--success)}
+.hist-FAILED{color:var(--danger)}
+.hist-CANCELLED,.hist-CANCELED{color:var(--orange)}
+.hist-TIMEOUT{color:var(--warn)}
+.hist-RUNNING{color:var(--primary)}
+
+/* ─────────────────────────────────────────────
+   Settings Panel
+───────────────────────────────────────────── */
+.settings-content{
+  max-width:500px;display:flex;flex-direction:column;gap:20px;
+}
+.setting-group{display:flex;flex-direction:column;gap:6px}
+.setting-group label{font-size:11px;letter-spacing:2px;color:var(--text-dim)}
+.setting-group input[type=text]{
+  padding:9px 12px;background:var(--surf);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);font-family:var(--font-mono);font-size:13px;
+  outline:none;transition:border .2s;width:100%;
+}
+.setting-group input[type=text]:focus{border-color:var(--primary);box-shadow:var(--glow-primary)}
+.setting-help{font-size:11px;color:var(--text-dimmer)}
+.setting-row{display:flex;align-items:center;gap:12px}
+.setting-group input[type=range]{
+  flex:1;accent-color:var(--primary);cursor:pointer;
+}
+#cfg-refresh-val{
+  font-family:var(--font-mono);color:var(--primary);min-width:30px;
+}
+.btn-mode{
+  padding:7px 20px;border-radius:8px;border:1px solid var(--border);
+  background:var(--surf);color:var(--text-dim);cursor:pointer;
+  font-family:var(--font-mono);font-size:12px;letter-spacing:1.5px;
+  transition:all .2s;
+}
+.btn-mode.active{
+  background:var(--primary-dim);color:var(--primary);
+  border-color:var(--primary);box-shadow:var(--glow-primary);
+}
+.toggle{position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.slider-knob{
+  position:absolute;inset:0;background:var(--surf2);border-radius:24px;
+  cursor:pointer;transition:.3s;border:1px solid var(--border);
+}
+.slider-knob::before{
+  content:'';position:absolute;width:18px;height:18px;left:2px;bottom:2px;
+  background:var(--text-dim);border-radius:50%;transition:.3s;
+}
+.toggle input:checked + .slider-knob{background:var(--success-dim);border-color:var(--success)}
+.toggle input:checked + .slider-knob::before{transform:translateX(18px);background:var(--success)}
+.btn-save{
+  align-self:flex-start;padding:10px 24px;border-radius:8px;
+  background:var(--primary-dim);border:1px solid var(--primary);
+  color:var(--primary);cursor:pointer;font-family:var(--font-mono);
+  font-size:12px;letter-spacing:2px;transition:all .2s;
+}
+.btn-save:hover{background:var(--primary);color:var(--bg);box-shadow:var(--glow-primary)}
+
+/* ─────────────────────────────────────────────
+   Toast Notifications
+───────────────────────────────────────────── */
+#toasts{
+  position:fixed;bottom:20px;right:20px;z-index:1000;
+  display:flex;flex-direction:column;gap:8px;align-items:flex-end;
+  pointer-events:none;
+}
+.toast{
+  padding:11px 18px;border-radius:10px;
+  font-family:var(--font-mono);font-size:12px;
+  border:1px solid;max-width:360px;
+  pointer-events:auto;cursor:pointer;
+  animation:toast-in .4s cubic-bezier(.22,1,.36,1) forwards;
+  display:flex;align-items:center;gap:10px;
+}
+.toast.out{animation:toast-out .35s ease-in forwards}
+@keyframes toast-in{
+  0%{opacity:0;transform:translateX(40px) scale(.9)}
+  100%{opacity:1;transform:translateX(0) scale(1)}
+}
+@keyframes toast-out{
+  0%{opacity:1;transform:translateX(0) scale(1)}
+  100%{opacity:0;transform:translateX(40px) scale(.9)}
+}
+.toast.success{background:var(--success-dim);color:var(--success);border-color:var(--success);box-shadow:var(--glow-success)}
+.toast.danger {background:var(--danger-dim); color:var(--danger); border-color:var(--danger); box-shadow:var(--glow-danger)}
+.toast.info   {background:var(--primary-dim);color:var(--primary);border-color:var(--primary);box-shadow:var(--glow-primary)}
+.toast.warn   {background:var(--warn-dim);   color:var(--warn);   border-color:var(--warn)}
+.toast.purple {background:var(--purple-dim); color:var(--purple); border-color:var(--purple)}
+
+/* ─────────────────────────────────────────────
+   Glitch title effect (triggered occasionally)
+───────────────────────────────────────────── */
+@keyframes glitch{
+  0%  {clip-path:inset(0 0 95% 0);transform:translateX(-4px)}
+  10% {clip-path:inset(30% 0 60% 0);transform:translateX(4px)}
+  20% {clip-path:inset(60% 0 30% 0);transform:translateX(-3px)}
+  30% {clip-path:inset(90% 0 0 0);transform:translateX(3px)}
+  40%,100%{clip-path:inset(0 0 0 0);transform:translateX(0)}
+}
+.glitch{position:relative}
+.glitch::after{
+  content:attr(data-text);position:absolute;inset:0;
+  color:var(--purple);opacity:.7;
+  animation:glitch .3s steps(2) forwards;
+}
+
+/* ─────────────────────────────────────────────
+   Loading spinner
+───────────────────────────────────────────── */
+.spinner{
+  display:inline-block;width:16px;height:16px;border:2px solid var(--border2);
+  border-top-color:var(--primary);border-radius:50%;
+  animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ─────────────────────────────────────────────
+   Priority sparkline chip
+───────────────────────────────────────────── */
+.priority-chip{
+  display:inline-block;padding:2px 7px;border-radius:4px;
+  font-size:10px;background:var(--surf2);color:var(--text-dim);
+}
+.priority-chip.high{color:var(--success);background:var(--success-dim)}
+.priority-chip.low{color:var(--text-dimmer)}
+
+/* ─────────────────────────────────────────────
+   Responsive
+───────────────────────────────────────────── */
+@media(max-width:700px){
+  .logo-sub{display:none}
+  th:nth-child(n+8){display:none}
+  td:nth-child(n+8){display:none}
+}
+</style>
+</head>
+<body>
+
+<canvas id="starfield"></canvas>
+<canvas id="particles"></canvas>
+
+<div id="app">
+
+  <!-- ── Header ───────────────────────────────── -->
+  <header id="header">
+    <div class="logo">
+      <span class="logo-icon">🚀</span>
+      <span class="logo-text" data-text="SLURMSIGHT" id="logo-text">SLURMSIGHT</span>
+      <span class="logo-sub">MISSION CONTROL</span>
+    </div>
+    <div class="header-center">
+      <div id="conn-status" class="conn-status connecting">⚡ CONNECTING</div>
+    </div>
+    <div class="header-right">
+      <div id="clock">--:--:--</div>
+      <div id="uptime-label">UPTIME: 0s</div>
+    </div>
+  </header>
+
+  <!-- ── Nav ──────────────────────────────────── -->
+  <nav id="nav">
+    <button class="tab active" data-panel="queue">⚡ QUEUE</button>
+    <button class="tab" data-panel="share">📊 FAIRSHARE</button>
+    <button class="tab" data-panel="info">🖥 NODES</button>
+    <button class="tab" data-panel="history">📜 HISTORY</button>
+    <button class="tab" data-panel="settings">⚙ CONFIG</button>
+  </nav>
+
+  <!-- ── Main ─────────────────────────────────── -->
+  <main id="main">
+
+    <!-- ── Queue Panel ── -->
+    <div id="panel-queue" class="panel active">
+      <div class="stats-row">
+        <div class="stat-card running"><div class="stat-value" id="stat-running">0</div><div class="stat-label">RUNNING</div></div>
+        <div class="stat-card pending"><div class="stat-value" id="stat-pending">0</div><div class="stat-label">PENDING</div></div>
+        <div class="stat-card other">  <div class="stat-value" id="stat-other">0</div>  <div class="stat-label">OTHER</div></div>
+        <div class="stat-card total">  <div class="stat-value" id="stat-total">0</div>  <div class="stat-label">TOTAL</div></div>
+      </div>
+
+      <div class="refresh-bar">
+        <div class="timer-wrap">
+          <svg id="refresh-svg" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(80,180,255,.2)" stroke-width="3"/>
+            <circle id="refresh-circle" cx="18" cy="18" r="15" fill="none"
+              stroke="#00e5ff" stroke-width="3"
+              stroke-dasharray="94.25" stroke-dashoffset="0"
+              stroke-linecap="round" transform="rotate(-90 18 18)"/>
+          </svg>
+          <span id="refresh-countdown">5</span>
+        </div>
+        <span class="refresh-label">AUTO REFRESH</span>
+        <div class="refresh-bar-right">
+          <span class="last-update" id="last-update-time">—</span>
+          <button class="btn-sm" id="btn-refresh">↻ NOW</button>
+        </div>
+      </div>
+
+      <div class="table-outer" style="flex:1;min-height:180px">
+        <div class="table-container">
+          <table id="job-table">
+            <thead><tr>
+              <th>JOB ID</th><th>NAME</th><th>PARTITION</th>
+              <th>STATE</th><th>ELAPSED</th><th>LIMIT</th>
+              <th>NODES</th><th>CPUS</th><th>MEM</th>
+              <th>NODELIST</th><th>REASON / PRIORITY</th>
+            </tr></thead>
+            <tbody id="job-tbody">
+              <tr class="empty-row"><td colspan="11">
+                <div class="empty-state">
+                  <div class="empty-icon">📡</div>
+                  <div>Waiting for first refresh…</div>
+                </div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── FairShare Panel ── -->
+    <div id="panel-share" class="panel">
+      <div class="panel-hdr">
+        <h2>FAIRSHARE STATUS</h2>
+        <div class="panel-hdr-right">
+          <button class="btn-sm" id="btn-refresh-share">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="table-outer" style="flex:1;min-height:200px">
+        <div class="table-container">
+          <div id="share-output" class="mono-output">
+            Click Refresh to load fairshare data.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Nodes Panel ── -->
+    <div id="panel-info" class="panel">
+      <div class="panel-hdr">
+        <h2>NODE STATUS</h2>
+        <div class="panel-hdr-right">
+          <button class="btn-sm" id="btn-refresh-info">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="table-outer" style="flex:1;min-height:200px">
+        <div class="table-container">
+          <table id="info-table">
+            <thead><tr>
+              <th>PARTITION</th><th>AVAIL</th><th>TIME LIMIT</th>
+              <th>NODES</th><th>STATE</th><th>NODELIST</th>
+              <th>CPUS (A/I/O/T)</th><th>GRES</th>
+            </tr></thead>
+            <tbody id="info-tbody">
+              <tr><td colspan="8">
+                <div class="empty-state">
+                  <div class="empty-icon">🖥</div>
+                  <div>Click Refresh to load node data.</div>
+                </div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── History Panel ── -->
+    <div id="panel-history" class="panel">
+      <div class="panel-hdr">
+        <h2>JOB HISTORY (24 h)</h2>
+        <div class="panel-hdr-right">
+          <button class="btn-sm" id="btn-refresh-history">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="table-outer" style="flex:1;min-height:200px">
+        <div class="table-container">
+          <table id="history-table">
+            <thead><tr>
+              <th>JOB ID</th><th>NAME</th><th>STATE</th>
+              <th>ELAPSED</th><th>CPU TIME</th><th>MAX RSS</th>
+              <th>PARTITION</th><th>NODES</th><th>EXIT</th>
+            </tr></thead>
+            <tbody id="history-tbody">
+              <tr><td colspan="9">
+                <div class="empty-state">
+                  <div class="empty-icon">📜</div>
+                  <div>Click Refresh to load job history.</div>
+                </div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Settings Panel ── -->
+    <div id="panel-settings" class="panel">
+      <div class="panel-hdr"><h2>CONFIGURATION</h2></div>
+      <div class="settings-content">
+        <div class="setting-group">
+          <label>SERVER URL</label>
+          <input type="text" id="cfg-server" placeholder="http://localhost:8787"/>
+          <div class="setting-help">Run <code>python3 server.py</code> to start the backend.</div>
+        </div>
+        <div class="setting-group">
+          <label>REFRESH INTERVAL</label>
+          <div class="setting-row">
+            <input type="range" id="cfg-refresh" min="2" max="60" step="1" value="5"/>
+            <span id="cfg-refresh-val">5s</span>
+          </div>
+        </div>
+        <div class="setting-group">
+          <label>MODE</label>
+          <div class="setting-row">
+            <button class="btn-mode active" id="btn-demo">DEMO</button>
+            <button class="btn-mode" id="btn-live">LIVE</button>
+          </div>
+          <div class="setting-help">Demo mode runs entirely in the browser — no Slurm required.</div>
+        </div>
+        <div class="setting-group">
+          <label>ANIMATIONS</label>
+          <div class="setting-row">
+            <label class="toggle"><input type="checkbox" id="cfg-anim" checked/><span class="slider-knob"></span></label>
+            <span>Enable job animations &amp; particle effects</span>
+          </div>
+        </div>
+        <button class="btn-save" id="btn-save">💾 SAVE SETTINGS</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   slurmSight — Mission Control JavaScript
+═══════════════════════════════════════════════════════ */
+
+// ─────────────────────────────────────────
+// Config (persisted in localStorage)
+// ─────────────────────────────────────────
+const CFG_KEY = 'slurmSight_cfg';
+let cfg = {
+  serverUrl: 'http://localhost:8787',
+  refreshInterval: 5,
+  demoMode: true,
+  animations: true,
+};
+try { Object.assign(cfg, JSON.parse(localStorage.getItem(CFG_KEY) || '{}')); } catch(_){}
+
+// ─────────────────────────────────────────
+// State
+// ─────────────────────────────────────────
+let prevJobs = {};        // jobid → job object
+let refreshTimer = null;
+let countdown = cfg.refreshInterval;
+let uptimeStart = Date.now();
+let connected = false;
+let scanWaveFrame = null;
+
+// ─────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const el = (tag, attrs={}, ...children) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'cls') e.className = v;
+    else if (k === 'html') e.innerHTML = v;
+    else e.setAttribute(k, v);
+  }
+  children.forEach(c => c && e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
+  return e;
+};
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function animNum(elemId, newVal) {
+  const e = $(elemId);
+  if (!e) return;
+  const old = parseInt(e.textContent) || 0;
+  if (old === newVal) return;
+  e.textContent = newVal;
+  if (cfg.animations) { e.classList.remove('bump'); void e.offsetWidth; e.classList.add('bump'); }
+}
+
+// ─────────────────────────────────────────
+// Clock & Uptime
+// ─────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  $('clock').textContent =
+    now.toLocaleTimeString('en-US', {hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const s = Math.floor((Date.now() - uptimeStart) / 1000);
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sc = s%60;
+  $('uptime-label').textContent =
+    `UPTIME: ${h ? h+'h ' : ''}${m ? m+'m ' : ''}${sc}s`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Random glitch on logo every 30-90s
+function maybeGlitch() {
+  const logo = $('logo-text');
+  if (logo && cfg.animations) {
+    logo.classList.add('glitch');
+    setTimeout(() => logo.classList.remove('glitch'), 400);
+  }
+  setTimeout(maybeGlitch, 30000 + Math.random()*60000);
+}
+setTimeout(maybeGlitch, 15000);
+
+// ─────────────────────────────────────────
+// Toast Notifications
+// ─────────────────────────────────────────
+function toast(msg, type='info', icon='ℹ️', duration=4000) {
+  const box = $('toasts');
+  const t = el('div', {cls: `toast ${type}`});
+  t.innerHTML = `<span>${icon}</span><span>${esc(msg)}</span>`;
+  box.appendChild(t);
+  t.onclick = () => remove(t);
+  function remove(t) {
+    t.classList.add('out');
+    t.addEventListener('animationend', () => t.remove(), {once:true});
+  }
+  setTimeout(() => remove(t), duration);
+}
+
+// ─────────────────────────────────────────
+// Particle Burst (job events)
+// ─────────────────────────────────────────
+const pCanvas = $('particles');
+const pCtx = pCanvas.getContext('2d');
+let particles = [];
+
+function resizeParticles() {
+  pCanvas.width = window.innerWidth;
+  pCanvas.height = window.innerHeight;
+}
+resizeParticles();
+window.addEventListener('resize', resizeParticles);
+
+function spawnBurst(x, y, color, count=30) {
+  if (!cfg.animations) return;
+  for (let i=0; i<count; i++) {
+    const angle = (Math.random()*Math.PI*2);
+    const speed = 1.5 + Math.random()*4;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle)*speed,
+      vy: Math.sin(angle)*speed - 2,
+      life: 1, decay: 0.02 + Math.random()*0.03,
+      r: 2 + Math.random()*3,
+      color,
+    });
+  }
+}
+
+function animParticles() {
+  pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+  particles = particles.filter(p => p.life > 0);
+  for (const p of particles) {
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.12;            // gravity
+    p.vx *= 0.98;
+    p.life -= p.decay;
+    pCtx.globalAlpha = Math.max(0, p.life);
+    pCtx.fillStyle = p.color;
+    pCtx.beginPath();
+    pCtx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    pCtx.fill();
+  }
+  pCtx.globalAlpha = 1;
+  requestAnimationFrame(animParticles);
+}
+animParticles();
+
+function burstFromRow(row, color) {
+  if (!row) return;
+  const rect = row.getBoundingClientRect();
+  const x = rect.left + rect.width/2;
+  const y = rect.top + rect.height/2;
+  spawnBurst(x, y, color, 35);
+}
+
+// ─────────────────────────────────────────
+// Starfield
+// ─────────────────────────────────────────
+(function() {
+  const c = $('starfield');
+  const ctx = c.getContext('2d');
+  let W, H, stars=[];
+
+  function resize() {
+    W = c.width = window.innerWidth;
+    H = c.height = window.innerHeight;
+    stars = Array.from({length: 220}, () => ({
+      x: Math.random()*W, y: Math.random()*H,
+      r: Math.random()*1.6, speed: 0.02+Math.random()*0.06,
+      alpha: 0.2+Math.random()*0.7, twinkle: Math.random()*Math.PI*2,
+      twinkleSpeed: 0.005+Math.random()*0.02,
+    }));
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function draw() {
+    ctx.clearRect(0,0,W,H);
+    for (const s of stars) {
+      s.twinkle += s.twinkleSpeed;
+      const a = s.alpha * (0.5 + 0.5*Math.sin(s.twinkle));
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#b0d8ff';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+      ctx.fill();
+      s.y -= s.speed;
+      if (s.y < -2) { s.y = H+2; s.x = Math.random()*W; }
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+// ─────────────────────────────────────────
+// Scanner Wave (table rows)
+// ─────────────────────────────────────────
+let waveIdx = 0;
+function runScannerWave() {
+  const rows = document.querySelectorAll('#job-tbody tr:not(.empty-row)');
+  if (!rows.length) { scanWaveFrame = setTimeout(runScannerWave, 200); return; }
+  rows.forEach(r => r.classList.remove('wave-scan'));
+  if (waveIdx < rows.length) rows[waveIdx].classList.add('wave-scan');
+  waveIdx++;
+  if (waveIdx > rows.length + 3) waveIdx = 0;
+  scanWaveFrame = setTimeout(runScannerWave, cfg.animations ? 130 : 99999);
+}
+runScannerWave();
+
+// ─────────────────────────────────────────
+// Refresh Countdown Timer
+// ─────────────────────────────────────────
+const CIRC = 94.25; // 2π×15
+function updateCountdownUI(seconds, total) {
+  const pct = seconds / total;
+  const offset = CIRC * (1 - pct);
+  $('refresh-circle').style.strokeDashoffset = offset;
+  $('refresh-countdown').textContent = seconds;
+}
+
+function startRefreshCycle() {
+  clearInterval(refreshTimer);
+  countdown = cfg.refreshInterval;
+  updateCountdownUI(countdown, cfg.refreshInterval);
+  refreshTimer = setInterval(() => {
+    countdown--;
+    if (countdown < 0) countdown = cfg.refreshInterval;
+    updateCountdownUI(countdown, cfg.refreshInterval);
+    if (countdown === 0) fetchQueue();
+  }, 1000);
+}
+
+// ─────────────────────────────────────────
+// State Badge
+// ─────────────────────────────────────────
+function stateBadge(state) {
+  const s = state ? state.toUpperCase() : 'UNKNOWN';
+  const cls = s in {
+    RUNNING:1,PENDING:1,COMPLETING:1,COMPLETED:1,
+    FAILED:1,CANCELLED:1,CANCELED:1,SUSPENDED:1,TIMEOUT:1
+  } ? s : 'default';
+  return `<span class="state-badge state-${cls}"><span class="dot"></span>${s}</span>`;
+}
+
+// ─────────────────────────────────────────
+// Parse squeue raw output
+// ─────────────────────────────────────────
+function parseSqueue(raw) {
+  return raw.trim().split('\n')
+    .filter(l => l.trim())
+    .map(line => {
+      const [jobid,name,partition,state,elapsed,timelimit,nodes,cpus,mem,nodelist,reason,priority,start] = line.split('\t');
+      return {jobid,name,partition,state,elapsed,timelimit,nodes,cpus,mem,nodelist,reason,priority,start};
+    });
+}
+
+// ─────────────────────────────────────────
+// Render Queue Table
+// ─────────────────────────────────────────
+function renderQueue(jobs) {
+  const tbody = $('job-tbody');
+
+  // Detect changes
+  const nowMap = {};
+  for (const j of jobs) nowMap[j.jobid] = j;
+
+  // Check for state changes / new arrivals / removals
+  for (const j of jobs) {
+    const prev = prevJobs[j.jobid];
+    if (!prev) {
+      // Brand new job
+      if (cfg.animations) {
+        const rowEl = tbody.querySelector(`tr[data-jid="${j.jobid}"]`);
+        if (rowEl) { rowEl.classList.add('row-enter'); rowEl.addEventListener('animationend', () => rowEl.classList.remove('row-enter'), {once:true}); }
+      }
+      toast(`Job ${j.jobid} (${j.name}) appeared in queue`, 'info', '🆕');
+    } else if (prev.state !== j.state) {
+      // State change
+      if (j.state === 'RUNNING') toast(`Job ${j.jobid} (${j.name}) is now RUNNING on ${j.nodelist}`, 'success', '▶️');
+      else if (j.state === 'COMPLETING') toast(`Job ${j.jobid} (${j.name}) is COMPLETING`, 'info', '🔵');
+    }
+  }
+  for (const [jid, prev] of Object.entries(prevJobs)) {
+    if (!nowMap[jid]) {
+      // Job gone
+      const s = prev.state;
+      if (s === 'RUNNING' || s === 'COMPLETING') {
+        toast(`Job ${jid} (${prev.name}) COMPLETED`, 'success', '✅', 5000);
+      } else if (s === 'FAILED') {
+        toast(`Job ${jid} (${prev.name}) FAILED`, 'danger', '💥', 6000);
+      } else if (s === 'CANCELLED' || s === 'CANCELED') {
+        toast(`Job ${jid} (${prev.name}) was CANCELLED`, 'warn', '🚫');
+      } else if (s === 'TIMEOUT') {
+        toast(`Job ${jid} (${prev.name}) TIMED OUT`, 'warn', '⏱', 6000);
+      }
+    }
+  }
+
+  prevJobs = nowMap;
+
+  // Update stats
+  let running=0, pending=0, other=0;
+  for (const j of jobs) {
+    if (j.state === 'RUNNING') running++;
+    else if (j.state === 'PENDING') pending++;
+    else other++;
+  }
+  animNum('stat-running', running);
+  animNum('stat-pending', pending);
+  animNum('stat-other', other);
+  animNum('stat-total', jobs.length);
+
+  // Render rows
+  if (!jobs.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="11"><div class="empty-state"><div class="empty-icon">🎉</div><div>No active jobs — all clear!</div></div></td></tr>`;
+    return;
+  }
+
+  const existing = {};
+  tbody.querySelectorAll('tr[data-jid]').forEach(r => { existing[r.dataset.jid] = r; });
+
+  // Remove rows no longer in list
+  for (const [jid, row] of Object.entries(existing)) {
+    if (!nowMap[jid]) {
+      if (cfg.animations) {
+        row.classList.add('row-exit');
+        // Burst before exit
+        const st = row.querySelector('.state-badge');
+        const color = st && st.classList.contains('state-FAILED') ? '#ff4466'
+                    : st && st.classList.contains('state-RUNNING') ? '#00ff9d' : '#00e5ff';
+        burstFromRow(row, color);
+        row.addEventListener('animationend', () => row.remove(), {once:true});
+      } else {
+        row.remove();
+      }
+    }
+  }
+
+  for (const j of jobs) {
+    const priority = parseFloat(j.priority) || 0;
+    const prioClass = priority > 0.9 ? 'high' : priority < 0.5 ? 'low' : '';
+    const prioLabel = j.priority && j.priority !== 'N/A' ? `<span class="priority-chip ${prioClass}">${j.priority}</span>` : '';
+    const reasonOrPrio = (j.reason && j.reason !== 'None') ? esc(j.reason) : prioLabel;
+
+    const html = `
+      <td>${esc(j.jobid)}</td>
+      <td title="${esc(j.name)}">${esc(j.name.length>18 ? j.name.slice(0,17)+'…' : j.name)}</td>
+      <td>${esc(j.partition)}</td>
+      <td>${stateBadge(j.state)}</td>
+      <td>${esc(j.elapsed)}</td>
+      <td>${esc(j.timelimit)}</td>
+      <td>${esc(j.nodes)}</td>
+      <td>${esc(j.cpus)}</td>
+      <td>${esc(j.mem)}</td>
+      <td title="${esc(j.nodelist)}">${esc(j.nodelist && j.nodelist !== 'N/A' ? j.nodelist.slice(0,22) : j.nodelist)}</td>
+      <td>${reasonOrPrio}</td>`;
+
+    if (existing[j.jobid]) {
+      const row = existing[j.jobid];
+      const prevState = row.dataset.state;
+      if (prevState !== j.state) {
+        row.innerHTML = html;
+        row.dataset.state = j.state;
+        if (cfg.animations) {
+          if (j.state === 'RUNNING') {
+            row.classList.add('row-flash-success');
+            burstFromRow(row, '#00ff9d');
+          } else if (j.state === 'FAILED') {
+            row.classList.add('row-flash-danger');
+            burstFromRow(row, '#ff4466');
+          }
+          row.addEventListener('animationend', () => {
+            row.classList.remove('row-flash-success', 'row-flash-danger');
+          }, {once:true});
+        }
+      } else {
+        row.innerHTML = html;
+      }
+      if (j.state === 'RUNNING') row.classList.add('row-glow-running');
+      else row.classList.remove('row-glow-running');
+    } else {
+      const row = document.createElement('tr');
+      row.dataset.jid = j.jobid;
+      row.dataset.state = j.state;
+      row.innerHTML = html;
+      if (j.state === 'RUNNING') row.classList.add('row-glow-running');
+      if (cfg.animations) {
+        row.classList.add('row-enter');
+        row.addEventListener('animationend', () => row.classList.remove('row-enter'), {once:true});
+      }
+      // insert in correct position
+      tbody.querySelectorAll('.empty-row').forEach(r => r.remove());
+      tbody.appendChild(row);
+    }
+  }
+}
+
+// ─────────────────────────────────────────
+// Fetch Queue
+// ─────────────────────────────────────────
+async function fetchQueue() {
+  $('last-update-time').textContent = new Date().toLocaleTimeString();
+  if (cfg.demoMode) {
+    renderQueue(demoNextTick());
+    setStatus('demo');
+    return;
+  }
+  try {
+    const r = await fetch(cfg.serverUrl + '/api/squeue', {signal: AbortSignal.timeout(8000)});
+    const data = await r.json();
+    if (!data.ok && data.err) {
+      setStatus('err');
+      toast(`squeue error: ${data.err}`, 'danger', '❌');
+      return;
+    }
+    setStatus('ok');
+    renderQueue(parseSqueue(data.out || ''));
+  } catch(e) {
+    setStatus('err');
+    if (connected) toast('Lost connection to slurmSight server', 'danger', '🔌');
+    connected = false;
+  }
+}
+
+// ─────────────────────────────────────────
+// Connection status
+// ─────────────────────────────────────────
+function setStatus(s) {
+  const el = $('conn-status');
+  el.className = 'conn-status ' + s;
+  el.textContent = s === 'ok' ? '● LIVE' : s === 'demo' ? '◈ DEMO' : s === 'err' ? '✖ OFFLINE' : '⚡ CONNECTING';
+  connected = s === 'ok';
+}
+
+// ─────────────────────────────────────────
+// FairShare
+// ─────────────────────────────────────────
+async function fetchShare() {
+  const out = $('share-output');
+  out.innerHTML = `<span class="spinner"></span> Loading…`;
+  if (cfg.demoMode) {
+    out.innerHTML = esc(DEMO_SSHARE);
+    return;
+  }
+  try {
+    const r = await fetch(cfg.serverUrl + '/api/sshare', {signal: AbortSignal.timeout(10000)});
+    const data = await r.json();
+    out.textContent = data.out || data.err || '(no output)';
+  } catch(e) { out.textContent = `Error: ${e.message}`; }
+}
+
+// ─────────────────────────────────────────
+// Node Info
+// ─────────────────────────────────────────
+function nodeStateClass(s) {
+  if (!s) return '';
+  const l = s.toLowerCase();
+  if (l.includes('idle')) return 'node-idle';
+  if (l.includes('alloc')) return 'node-alloc';
+  if (l.includes('mix')) return 'node-mix';
+  if (l.includes('down')) return 'node-down';
+  if (l.includes('drain')) return 'node-drain';
+  if (l.includes('comp')) return 'node-comp';
+  return '';
+}
+
+async function fetchInfo() {
+  const tbody = $('info-tbody');
+  tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><span class="spinner"></span> Loading…</div></td></tr>`;
+  if (cfg.demoMode) {
+    renderInfo(DEMO_SINFO);
+    return;
+  }
+  try {
+    const r = await fetch(cfg.serverUrl + '/api/sinfo', {signal: AbortSignal.timeout(10000)});
+    const data = await r.json();
+    if (!data.ok) { tbody.innerHTML = `<tr><td colspan="8" style="color:var(--danger);padding:20px">${esc(data.err)}</td></tr>`; return; }
+    renderInfo(data.out);
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="8" style="color:var(--danger);padding:20px">${esc(e.message)}</td></tr>`; }
+}
+
+function renderInfo(raw) {
+  const tbody = $('info-tbody');
+  const rows = (raw||'').trim().split('\n').filter(l=>l.trim());
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div>No node data.</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(line => {
+    const [partition,avail,timelimit,nodes,state,nodelist,cpus,gres] = line.split('\t');
+    const sc = nodeStateClass(state);
+    return `<tr>
+      <td>${esc(partition||'')}</td><td>${esc(avail||'')}</td><td>${esc(timelimit||'')}</td>
+      <td>${esc(nodes||'')}</td>
+      <td class="${sc}">${esc(state||'')}</td>
+      <td title="${esc(nodelist||'')}">${esc((nodelist||'').slice(0,30))}</td>
+      <td>${esc(cpus||'')}</td><td>${esc(gres||'')}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────
+// History
+// ─────────────────────────────────────────
+async function fetchHistory() {
+  const tbody = $('history-tbody');
+  tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><span class="spinner"></span> Loading…</div></td></tr>`;
+  if (cfg.demoMode) {
+    renderHistory(DEMO_SACCT);
+    return;
+  }
+  try {
+    const r = await fetch(cfg.serverUrl + '/api/sacct', {signal: AbortSignal.timeout(15000)});
+    const data = await r.json();
+    if (!data.ok) { tbody.innerHTML = `<tr><td colspan="9" style="color:var(--danger);padding:20px">${esc(data.err)}</td></tr>`; return; }
+    renderHistory(data.out);
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="9" style="color:var(--danger);padding:20px">${esc(e.message)}</td></tr>`; }
+}
+
+function renderHistory(raw) {
+  const tbody = $('history-tbody');
+  const rows = (raw||'').trim().split('\n').filter(l=>l.trim() && !l.startsWith('JobID'));
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div>No job history found.</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.slice(0,200).map(line => {
+    const parts = line.split('|');
+    const [jobid,name,state,elapsed,cputime,maxrss,partition,nodelist,,, exitcode] = parts;
+    if (!jobid || jobid.includes('.')) return ''; // skip job steps
+    const sc = 'hist-' + (state||'').split(' ')[0].replace('+','').toUpperCase();
+    return `<tr>
+      <td>${esc(jobid||'')}</td>
+      <td title="${esc(name||'')}">${esc((name||'').slice(0,20))}</td>
+      <td class="${esc(sc)}">${esc(state||'')}</td>
+      <td>${esc(elapsed||'')}</td><td>${esc(cputime||'')}</td>
+      <td>${esc(maxrss||'')}</td><td>${esc(partition||'')}</td>
+      <td>${esc(nodelist||'')}</td><td>${esc(exitcode||'')}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────
+// Tabs
+// ─────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    const pId = 'panel-' + btn.dataset.panel;
+    const panel = document.getElementById(pId);
+    if (panel) panel.classList.add('active');
+  });
+});
+
+// ─────────────────────────────────────────
+// Button handlers
+// ─────────────────────────────────────────
+$('btn-refresh').onclick = () => { countdown = cfg.refreshInterval; fetchQueue(); };
+$('btn-refresh-share').onclick = fetchShare;
+$('btn-refresh-info').onclick = fetchInfo;
+$('btn-refresh-history').onclick = fetchHistory;
+
+$('cfg-refresh').oninput = function() {
+  $('cfg-refresh-val').textContent = this.value + 's';
+};
+
+$('btn-demo').onclick = () => {
+  cfg.demoMode = true;
+  $('btn-demo').classList.add('active');
+  $('btn-live').classList.remove('active');
+  setStatus('demo');
+};
+$('btn-live').onclick = () => {
+  cfg.demoMode = false;
+  $('btn-live').classList.add('active');
+  $('btn-demo').classList.remove('active');
+  setStatus('connecting');
+};
+
+$('btn-save').onclick = () => {
+  cfg.serverUrl = $('cfg-server').value.trim() || 'http://localhost:8787';
+  cfg.refreshInterval = parseInt($('cfg-refresh').value) || 5;
+  cfg.animations = $('cfg-anim').checked;
+  localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+  // Restart cycle
+  startRefreshCycle();
+  toast('Settings saved!', 'success', '💾');
+  // Switch back to queue
+  document.querySelector('.tab[data-panel="queue"]').click();
+};
+
+// Populate settings from cfg
+$('cfg-server').value = cfg.serverUrl;
+$('cfg-refresh').value = cfg.refreshInterval;
+$('cfg-refresh-val').textContent = cfg.refreshInterval + 's';
+$('cfg-anim').checked = cfg.animations;
+if (cfg.demoMode) { $('btn-demo').classList.add('active'); $('btn-live').classList.remove('active'); }
+else { $('btn-live').classList.add('active'); $('btn-demo').classList.remove('active'); }
+
+// ─────────────────────────────────────────
+// ── DEMO MODE ────────────────────────────
+// Simulated Slurm data
+// ─────────────────────────────────────────
+const PARTITIONS = ['gpu','cpu','bigmem','debug','preemptible'];
+const NAMES = ['train_v3','data_proc','finetune','eval_run','batch_inf','preprocess','feature_eng','sweep_001','experiment','baseline'];
+let _demoJobs = [
+  {jobid:'112001',name:'train_v3',    partition:'gpu',    state:'RUNNING',  elapsed:'03:12:44',timelimit:'8:00:00',nodes:'2',cpus:'32',mem:'64G',nodelist:'gpu[01-02]',reason:'None',priority:'0.998',start:'2024-01-15T09:00:00'},
+  {jobid:'112002',name:'data_proc',   partition:'cpu',    state:'RUNNING',  elapsed:'00:45:18',timelimit:'2:00:00',nodes:'1',cpus:'8', mem:'16G',nodelist:'cn42',      reason:'None',priority:'0.975',start:'2024-01-15T12:00:00'},
+  {jobid:'112003',name:'finetune',    partition:'gpu',    state:'PENDING',  elapsed:'0:00:00', timelimit:'4:00:00',nodes:'4',cpus:'64',mem:'128G',nodelist:'N/A',      reason:'Resources',priority:'0.921',start:'N/A'},
+  {jobid:'112004',name:'eval_run',    partition:'cpu',    state:'PENDING',  elapsed:'0:00:00', timelimit:'1:00:00',nodes:'1',cpus:'4', mem:'8G', nodelist:'N/A',      reason:'Priority', priority:'0.834',start:'N/A'},
+];
+let _demoTick = 0;
+let _demoNextId = 112010;
+
+const DEMO_SSHARE = `     Account       User  RawShares  NormShares  RawUsage  EffectvUsage  FairShare
+---------- ---------- ---------- ----------- --------- ------------- ----------
+      root                         1.000000         0      0.000000   0.500000
+      root       root     parent    1.000000         0      0.000000   0.500000
+    biolab                         0.200000   1234567      0.180000   0.542000
+    biolab      alice          5    0.050000    987654      0.145000   0.620000
+    biolab        bob          5    0.050000    246801      0.036000   0.880000
+  mlresearch                       0.450000   3456789      0.505000   0.473000
+  mlresearch    carol         20    0.200000   2345678      0.342000   0.389000
+  mlresearch    david         10    0.100000   1111111      0.162000   0.452000
+  mlresearch      eve          5    0.050000         0      0.000000   1.000000
+    sysops                         0.350000    500000      0.073000   0.785000
+    sysops     frank         10    0.100000    499999      0.073000   0.789000`;
+
+const DEMO_SINFO = [
+  'gpu*\tup\t8:00:00\t8\tidle\tgpu[01-08]\t0/64/0/64\tgpu:a100:8',
+  'gpu*\tup\t8:00:00\t4\talloc\tgpu[09-12]\t32/0/0/32\tgpu:a100:4',
+  'cpu\tup\t48:00:00\t20\tidle\tcn[01-20]\t0/320/0/320\t(null)',
+  'cpu\tup\t48:00:00\t5\tmix\tcn[21-25]\t80/20/0/100\t(null)',
+  'bigmem\tup\t72:00:00\t4\tidle\tbm[01-04]\t0/256/0/256\t(null)',
+  'debug\tup\t1:00:00\t2\tidle\tdbg[01-02]\t0/16/0/16\t(null)',
+  'preemptible\tup\t24:00:00\t3\tdown\tpre[01-03]\t0/0/24/24\t(null)',
+].join('\n');
+
+const DEMO_SACCT = [
+  '111990|train_v2|COMPLETED|02:34:15|02:33:41|24576K|gpu|gpu[01-02]|2024-01-15T06:00:00|2024-01-15T08:34:15|0:0',
+  '111985|baseline |FAILED   |00:12:03|00:12:01|8192K |cpu|cn10      |2024-01-15T05:00:00|2024-01-15T05:12:03|1:0',
+  '111980|sweep_001|COMPLETED|01:00:00|00:59:55|16384K|gpu|gpu05     |2024-01-15T04:00:00|2024-01-15T05:00:00|0:0',
+  '111975|preprocess|CANCELLED|00:05:10|00:05:08|4096K |cpu|cn22     |2024-01-15T03:00:00|2024-01-15T03:05:10|0:0',
+  '111970|eval_run |COMPLETED|00:30:00|00:29:45|12288K|cpu|cn05      |2024-01-15T02:00:00|2024-01-15T02:30:00|0:0',
+].map(r => r.split('|').join('|')).join('\n');
+
+function demoNextTick() {
+  _demoTick++;
+
+  // Every ~8 ticks a PENDING job may start RUNNING
+  if (_demoTick % 8 === 0) {
+    const pend = _demoJobs.find(j => j.state === 'PENDING');
+    if (pend) {
+      pend.state = 'RUNNING';
+      pend.elapsed = '0:00:01';
+      pend.nodelist = PARTITIONS.includes(pend.partition) ? `cn${10+Math.floor(Math.random()*30)}` : 'node01';
+      pend.reason = 'None';
+    }
+  }
+
+  // Every ~12 ticks a RUNNING job might COMPLETE
+  if (_demoTick % 12 === 0) {
+    const run = _demoJobs.filter(j => j.state === 'RUNNING');
+    if (run.length > 1) {
+      const idx = Math.floor(Math.random()*run.length);
+      _demoJobs = _demoJobs.filter(j => j.jobid !== run[idx].jobid);
+    }
+  }
+
+  // Every ~20 ticks a RUNNING job might FAIL
+  if (_demoTick % 20 === 0 && Math.random() < 0.35) {
+    const run = _demoJobs.filter(j => j.state === 'RUNNING');
+    if (run.length) {
+      const victim = run[Math.floor(Math.random()*run.length)];
+      victim.state = 'FAILED';
+      setTimeout(() => {
+        _demoJobs = _demoJobs.filter(j => j.jobid !== victim.jobid);
+      }, 3000);
+    }
+  }
+
+  // Every ~15 ticks add a new PENDING job
+  if (_demoTick % 15 === 0) {
+    _demoNextId++;
+    _demoJobs.push({
+      jobid: String(_demoNextId),
+      name: NAMES[Math.floor(Math.random()*NAMES.length)],
+      partition: PARTITIONS[Math.floor(Math.random()*PARTITIONS.length)],
+      state: 'PENDING',
+      elapsed: '0:00:00', timelimit: `${1+Math.floor(Math.random()*23)}:00:00`,
+      nodes: String(1 << Math.floor(Math.random()*3)),
+      cpus: String([4,8,16,32,64][Math.floor(Math.random()*5)]),
+      mem: ['8G','16G','32G','64G','128G'][Math.floor(Math.random()*5)],
+      nodelist: 'N/A', reason: 'Resources',
+      priority: (0.5+Math.random()*0.5).toFixed(3),
+      start: 'N/A',
+    });
+  }
+
+  // Tick elapsed time on RUNNING jobs
+  _demoJobs.forEach(j => {
+    if (j.state === 'RUNNING') {
+      const parts = j.elapsed.split(':').map(Number);
+      let [h,m,s] = parts.length === 3 ? parts : [0, parts[0]||0, parts[1]||0];
+      s += cfg.refreshInterval;
+      m += Math.floor(s/60); s %= 60;
+      h += Math.floor(m/60); m %= 60;
+      j.elapsed = `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+  });
+
+  return [..._demoJobs];
+}
+
+// ─────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────
+setStatus(cfg.demoMode ? 'demo' : 'connecting');
+fetchQueue();
+startRefreshCycle();
+
+// Greet
+setTimeout(() => {
+  toast('Welcome to slurmSight Mission Control!', 'purple', '🚀', 4000);
+}, 800);
+</script>
+</body>
+</html>
