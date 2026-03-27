@@ -232,6 +232,17 @@ th{
   font-size:10px;letter-spacing:2px;color:var(--text-dim);
   white-space:nowrap;
 }
+th.sortable{
+  cursor:pointer;user-select:none;position:relative;padding-right:28px;
+  transition:color .2s,background .2s;
+}
+th.sortable:hover{color:var(--text);background:rgba(0,229,255,.04)}
+th.sortable::after{
+  content:attr(data-sort-indicator);position:absolute;right:10px;top:50%;
+  transform:translateY(-50%);color:var(--text-dimmer);font-size:11px;
+}
+th.sortable.active-sort{color:var(--primary)}
+th.sortable.active-sort::after{color:var(--primary)}
 th:first-child{padding-left:16px}
 td{
   padding:9px 14px;border-bottom:1px solid rgba(80,180,255,.07);
@@ -777,12 +788,19 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
         <div class="table-container">
           <table id="history-table">
             <thead><tr>
-              <th>JOB ID</th><th>NAME</th><th>STATE</th>
-              <th>ELAPSED</th><th>CPU TIME</th><th>MAX RSS</th>
-              <th>PARTITION</th><th>NODES</th><th>EXIT</th>
+              <th class="sortable active-sort" data-sort-key="jobid" data-sort-type="number" data-sort-indicator="↓" aria-sort="descending">JOB ID</th>
+              <th class="sortable" data-sort-key="name" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">NAME</th>
+              <th class="sortable" data-sort-key="state" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">STATE</th>
+              <th class="sortable" data-sort-key="elapsed" data-sort-type="duration" data-sort-indicator="↕" aria-sort="none">ELAPSED</th>
+              <th class="sortable" data-sort-key="cputime" data-sort-type="duration" data-sort-indicator="↕" aria-sort="none">CPU TIME</th>
+              <th class="sortable" data-sort-key="maxrss" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">MAX RSS</th>
+              <th class="sortable" data-sort-key="partition" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">PARTITION</th>
+              <th class="sortable" data-sort-key="nodelist" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">NODES</th>
+              <th class="sortable" data-sort-key="submitted" data-sort-type="datetime" data-sort-indicator="↕" aria-sort="none">SUBMITTED</th>
+              <th class="sortable" data-sort-key="exitcode" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">EXIT</th>
             </tr></thead>
             <tbody id="history-tbody">
-              <tr><td colspan="9">
+              <tr><td colspan="10">
                 <div class="empty-state">
                   <div class="empty-icon">📜</div>
                   <div>Click Refresh to load job history.</div>
@@ -948,6 +966,8 @@ let countdown = cfg.refreshInterval;
 let uptimeStart = Date.now();
 let connected = false;
 let scanWaveFrame = null;
+let historyRows = [];
+let historySort = { key: 'jobid', direction: 'desc', type: 'number' };
 
 // ─────────────────────────────────────────
 // Helpers
@@ -1513,7 +1533,7 @@ function renderInfo(raw) {
 // ─────────────────────────────────────────
 async function fetchHistory() {
   const tbody = $('history-tbody');
-  tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><span class="spinner"></span> Loading…</div></td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><span class="spinner"></span> Loading…</div></td></tr>`;
   if (cfg.demoMode) {
     renderHistory(DEMO_SACCT);
     return;
@@ -1521,32 +1541,133 @@ async function fetchHistory() {
   try {
     const r = await fetch(cfg.serverUrl + '/api/sacct', {signal: AbortSignal.timeout(15000)});
     const data = await r.json();
-    if (!data.ok) { tbody.innerHTML = `<tr><td colspan="9" style="color:var(--danger);padding:20px">${esc(data.err)}</td></tr>`; return; }
+    if (!data.ok) { tbody.innerHTML = `<tr><td colspan="10" style="color:var(--danger);padding:20px">${esc(data.err)}</td></tr>`; return; }
     renderHistory(data.out);
-  } catch(e) { tbody.innerHTML = `<tr><td colspan="9" style="color:var(--danger);padding:20px">${esc(e.message)}</td></tr>`; }
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="10" style="color:var(--danger);padding:20px">${esc(e.message)}</td></tr>`; }
+}
+
+function parseDurationToSeconds(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return Number.NaN;
+  const [dayPart, timePart] = raw.includes('-') ? raw.split('-', 2) : [null, raw];
+  const segments = timePart.split(':').map(Number);
+  if (segments.some(Number.isNaN)) return Number.NaN;
+  let total = 0;
+  if (segments.length === 3) total = segments[0] * 3600 + segments[1] * 60 + segments[2];
+  else if (segments.length === 2) total = segments[0] * 60 + segments[1];
+  else if (segments.length === 1) total = segments[0];
+  if (dayPart !== null) {
+    const days = Number(dayPart);
+    if (Number.isNaN(days)) return Number.NaN;
+    total += days * 86400;
+  }
+  return total;
+}
+
+function parseHistoryRows(raw) {
+  return (raw || '').trim().split('\n')
+    .filter(line => line.trim() && !line.startsWith('JobID'))
+    .map(line => {
+      const parts = line.split('|');
+      const [jobid, name, state, elapsed, cputime, maxrss, partition, nodelist, submitted, , exitcode] = parts;
+      if (!jobid || jobid.includes('.')) return null;
+      return {
+        jobid: jobid.trim(),
+        name: (name || '').trim(),
+        state: (state || '').trim(),
+        elapsed: (elapsed || '').trim(),
+        cputime: (cputime || '').trim(),
+        maxrss: (maxrss || '').trim(),
+        partition: (partition || '').trim(),
+        nodelist: (nodelist || '').trim(),
+        submitted: (submitted || '').trim(),
+        exitcode: (exitcode || '').trim(),
+      };
+    })
+    .filter(Boolean);
+}
+
+function compareHistoryValues(a, b, type) {
+  if (type === 'number') {
+    return (parseFloat(a) || 0) - (parseFloat(b) || 0);
+  }
+  if (type === 'duration') {
+    return (parseDurationToSeconds(a) || 0) - (parseDurationToSeconds(b) || 0);
+  }
+  if (type === 'datetime') {
+    return (Date.parse(a) || 0) - (Date.parse(b) || 0);
+  }
+  return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function sortHistoryRows(rows) {
+  const { key, direction, type } = historySort;
+  const directionFactor = direction === 'asc' ? 1 : -1;
+  return [...rows].sort((left, right) => {
+    const primary = compareHistoryValues(left[key], right[key], type);
+    if (primary !== 0) return primary * directionFactor;
+    return compareHistoryValues(right.jobid, left.jobid, 'number');
+  });
+}
+
+function updateHistorySortHeaders() {
+  document.querySelectorAll('#history-table th.sortable').forEach(th => {
+    const isActive = th.dataset.sortKey === historySort.key;
+    th.classList.toggle('active-sort', isActive);
+    th.dataset.sortIndicator = isActive ? (historySort.direction === 'asc' ? '↑' : '↓') : '↕';
+    th.setAttribute('aria-sort', isActive ? (historySort.direction === 'asc' ? 'ascending' : 'descending') : 'none');
+  });
+}
+
+function renderHistoryTable() {
+  const tbody = $('history-tbody');
+  if (!historyRows.length) {
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div>No job history found.</div></div></td></tr>`;
+    updateHistorySortHeaders();
+    return;
+  }
+
+  const rows = sortHistoryRows(historyRows);
+  tbody.innerHTML = rows.slice(0, 200).map(job => {
+    const sc = 'hist-' + (job.state || '').split(' ')[0].replace('+', '').toUpperCase();
+    return `<tr>
+      <td>${esc(job.jobid)}</td>
+      <td title="${esc(job.name)}">${esc(job.name.slice(0,20))}</td>
+      <td class="${esc(sc)}">${esc(job.state)}</td>
+      <td>${esc(job.elapsed)}</td>
+      <td>${esc(job.cputime)}</td>
+      <td>${esc(job.maxrss)}</td>
+      <td>${esc(job.partition)}</td>
+      <td>${esc(job.nodelist)}</td>
+      <td>${esc(job.submitted || 'N/A')}</td>
+      <td>${esc(job.exitcode)}</td>
+    </tr>`;
+  }).join('');
+  updateHistorySortHeaders();
 }
 
 function renderHistory(raw) {
-  const tbody = $('history-tbody');
-  const rows = (raw||'').trim().split('\n').filter(l=>l.trim() && !l.startsWith('JobID'));
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div>No job history found.</div></div></td></tr>`;
-    return;
-  }
-  tbody.innerHTML = rows.slice(0,200).map(line => {
-    const parts = line.split('|');
-    const [jobid,name,state,elapsed,cputime,maxrss,partition,nodelist,,, exitcode] = parts;
-    if (!jobid || jobid.includes('.')) return ''; // skip job steps
-    const sc = 'hist-' + (state||'').split(' ')[0].replace('+','').toUpperCase();
-    return `<tr>
-      <td>${esc(jobid||'')}</td>
-      <td title="${esc(name||'')}">${esc((name||'').slice(0,20))}</td>
-      <td class="${esc(sc)}">${esc(state||'')}</td>
-      <td>${esc(elapsed||'')}</td><td>${esc(cputime||'')}</td>
-      <td>${esc(maxrss||'')}</td><td>${esc(partition||'')}</td>
-      <td>${esc(nodelist||'')}</td><td>${esc(exitcode||'')}</td>
-    </tr>`;
-  }).join('');
+  historyRows = parseHistoryRows(raw);
+  renderHistoryTable();
+}
+
+function setupHistorySorting() {
+  document.querySelectorAll('#history-table th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const nextKey = th.dataset.sortKey;
+      const nextType = th.dataset.sortType || 'string';
+      if (historySort.key === nextKey) {
+        historySort.direction = historySort.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        historySort = {
+          key: nextKey,
+          direction: nextKey === 'jobid' ? 'desc' : 'asc',
+          type: nextType,
+        };
+      }
+      renderHistoryTable();
+    });
+  });
 }
 
 // ─────────────────────────────────────────
@@ -1943,6 +2064,7 @@ function setupRowClickHandlers() {
 setStatus(cfg.demoMode ? 'demo' : 'connecting');
 fetchQueue();
 setupRowClickHandlers();
+setupHistorySorting();
 startRefreshCycle();
 $('cfg-sounds').checked = cfg.sounds;
 
