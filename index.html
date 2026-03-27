@@ -65,7 +65,9 @@ body{display:flex;flex-direction:column}
   font-family:var(--font-mono);font-size:22px;font-weight:700;
   letter-spacing:4px;
   background:linear-gradient(135deg,var(--primary),var(--purple));
+  background-clip:text;
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  color:transparent;
   text-shadow:none;filter:drop-shadow(0 0 10px var(--primary-dim));
 }
 .logo-sub{
@@ -562,7 +564,27 @@ tbody tr.wave-scan{
   padding:4px 6px;background:rgba(255,255,255,.02);border-radius:4px;
 }
 .user-name{color:var(--text-dim)}
-.user-share{font-family:var(--font-mono);color:var(--success)}
+.user-share{font-family:var(--font-mono);color:var(--success);display:flex;gap:10px}
+.share-toolbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px;
+  margin:0 0 16px;padding:12px 14px;border-radius:var(--radius);
+  background:var(--surf);border:1px solid var(--border);
+}
+.share-toolbar-label{
+  font-size:10px;letter-spacing:2px;color:var(--text-dim);
+  font-family:var(--font-mono);
+}
+.share-toolbar select{
+  padding:7px 10px;border-radius:8px;background:var(--bg2);
+  color:var(--text);border:1px solid var(--border);
+  font-family:var(--font-mono);font-size:12px;outline:none;
+}
+.share-toolbar select:focus{border-color:var(--primary);box-shadow:var(--glow-primary)}
+.share-summary{
+  margin-left:auto;font-size:11px;color:var(--text-dim);
+  font-family:var(--font-mono);letter-spacing:1px;
+}
+.user-fairshare{color:var(--primary)}
 
 /* ─────────────────────────────────────────────
    Job Detail Modal
@@ -744,6 +766,15 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
       <div class="panel-hdr">
         <h2>FAIRSHARE STATUS</h2>
         <div class="panel-hdr-right">
+          <select id="share-sort-key" aria-label="Sort fairshare cards">
+            <option value="fairShare">Fairshare</option>
+            <option value="effUse">Usage</option>
+            <option value="rawShares">Raw Shares</option>
+            <option value="normShares">Norm Shares</option>
+            <option value="userCount">User Count</option>
+            <option value="name">Account Name</option>
+          </select>
+          <button class="btn-sm" id="btn-share-sort-dir">↓ DESC</button>
           <button class="btn-sm" id="btn-refresh-share">↻ Refresh</button>
         </div>
       </div>
@@ -981,6 +1012,8 @@ let scanWaveFrame = null;
 let queueSort = { key: 'jobid', direction: 'desc', type: 'number' };
 let infoRows = [];
 let infoSort = { key: 'partition', direction: 'asc', type: 'string' };
+let shareRaw = '';
+let shareSort = { key: 'fairShare', direction: 'desc' };
 let historyRows = [];
 let historySort = { key: 'jobid', direction: 'desc', type: 'number' };
 
@@ -1483,14 +1516,16 @@ async function fetchShare() {
   const out = $('share-output');
   out.innerHTML = `<span class="spinner"></span> Loading…`;
   if (cfg.demoMode) {
-    renderShareCards(DEMO_SSHARE);
+    shareRaw = DEMO_SSHARE;
+    renderShareCards(shareRaw);
     return;
   }
   try {
     const r = await fetch(cfg.serverUrl + '/api/sshare', {signal: AbortSignal.timeout(10000)});
     const data = await r.json();
     if (data.ok) {
-      renderShareCards(data.out || '');
+      shareRaw = data.out || '';
+      renderShareCards(shareRaw);
     } else {
       container.innerHTML = `<div class="mono-output" style="color:var(--danger)">${esc(data.err)}</div>`;
     }
@@ -1764,6 +1799,14 @@ $('btn-refresh').onclick = () => { countdown = cfg.refreshInterval; fetchQueue()
 $('btn-refresh-share').onclick = fetchShare;
 $('btn-refresh-info').onclick = fetchInfo;
 $('btn-refresh-history').onclick = fetchHistory;
+$('share-sort-key').onchange = function() {
+  shareSort.key = this.value;
+  if (shareRaw) renderShareCards(shareRaw);
+};
+$('btn-share-sort-dir').onclick = () => {
+  shareSort.direction = shareSort.direction === 'asc' ? 'desc' : 'asc';
+  if (shareRaw) renderShareCards(shareRaw);
+};
 
 $('cfg-refresh').oninput = function() {
   $('cfg-refresh-val').textContent = this.value + 's';
@@ -1800,6 +1843,7 @@ $('cfg-server').value = cfg.serverUrl;
 $('cfg-refresh').value = cfg.refreshInterval;
 $('cfg-refresh-val').textContent = cfg.refreshInterval + 's';
 $('cfg-anim').checked = cfg.animations;
+syncShareSortControls();
 if (cfg.demoMode) { $('btn-demo').classList.add('active'); $('btn-live').classList.remove('active'); }
 else { $('btn-live').classList.add('active'); $('btn-demo').classList.remove('active'); }
 
@@ -1966,6 +2010,27 @@ function parseSshare(raw) {
   return { accounts: Object.values(accounts), users };
 }
 
+function sortShareAccounts(accounts) {
+  const direction = shareSort.direction === 'asc' ? 1 : -1;
+  const key = shareSort.key;
+  return [...accounts].sort((left, right) => {
+    const leftVal = key === 'userCount' ? left.users.length : left[key];
+    const rightVal = key === 'userCount' ? right.users.length : right[key];
+    const comparison = typeof leftVal === 'string'
+      ? String(leftVal || '').localeCompare(String(rightVal || ''), undefined, { sensitivity: 'base' })
+      : (Number(leftVal) || 0) - (Number(rightVal) || 0);
+    if (comparison !== 0) return comparison * direction;
+    return String(left.name || '').localeCompare(String(right.name || ''), undefined, { sensitivity: 'base' });
+  });
+}
+
+function syncShareSortControls() {
+  const keyEl = $('share-sort-key');
+  const dirEl = $('btn-share-sort-dir');
+  if (keyEl) keyEl.value = shareSort.key;
+  if (dirEl) dirEl.textContent = shareSort.direction === 'asc' ? '↑ ASC' : '↓ DESC';
+}
+
 function renderShareCards(raw) {
   const container = $('share-container');
   const { accounts } = parseSshare(raw);
@@ -1975,13 +2040,27 @@ function renderShareCards(raw) {
     return;
   }
 
+  const sortedAccounts = sortShareAccounts(accounts).map(acc => ({
+    ...acc,
+    users: [...acc.users].sort((left, right) => {
+      const fairshareDelta = (right.fairShare || 0) - (left.fairShare || 0);
+      if (fairshareDelta !== 0) return fairshareDelta;
+      return (right.shares || 0) - (left.shares || 0);
+    }),
+  }));
+
   const html = `
     <div style="padding:16px">
+      <div class="share-toolbar">
+        <span class="share-toolbar-label">SORTING LIVE VIEW</span>
+        <span class="share-summary">${sortedAccounts.length} accounts</span>
+      </div>
       <div class="fairshare-container">
-        ${accounts.map(acc => `
+        ${sortedAccounts.map(acc => `
           <div class="account-card">
             <div class="card-header">
               <div class="card-title">${esc(acc.name)}</div>
+              <span class="priority-chip ${acc.fairShare >= 0.75 ? 'high' : ''}">${acc.users.length} users</span>
             </div>
             <div class="card-meta">
               <div class="metric-col">
@@ -2016,7 +2095,7 @@ function renderShareCards(raw) {
                 ${acc.users.map(u => `
                   <div class="user-item">
                     <span class="user-name">${esc(u.user)}</span>
-                    <span class="user-share">${u.shares} shares</span>
+                    <span class="user-share"><span>${u.shares} shares</span><span class="user-fairshare">${((u.fairShare || 0) * 100).toFixed(1)}%</span></span>
                   </div>
                 `).join('')}
               </div>
@@ -2027,6 +2106,7 @@ function renderShareCards(raw) {
     </div>
   `;
   container.innerHTML = html;
+  syncShareSortControls();
 }
 
 // ─────────────────────────────────────────
