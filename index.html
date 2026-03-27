@@ -2177,6 +2177,7 @@ function populateJobModal(job) {
 
   // Disable cancel if job isn't running/pending
   const cancelBtn = $('modal-btn-cancel');
+  cancelBtn.textContent = '❌ CANCEL';
   const canCancel = ['RUNNING', 'PENDING', 'SUSPENDED'].includes(job.state);
   cancelBtn.disabled = !canCancel;
   if (canCancel) {
