@@ -1795,6 +1795,8 @@ document.querySelectorAll('.tab').forEach(btn => {
     const panel = document.getElementById(pId);
     if (panel) panel.classList.add('active');
     if (btn.dataset.panel === 'share') fetchShare();
+    if (btn.dataset.panel === 'info') fetchInfo();
+    if (btn.dataset.panel === 'history') fetchHistory();
   });
 });
 
