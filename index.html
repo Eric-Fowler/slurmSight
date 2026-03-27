@@ -714,10 +714,17 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
         <div class="table-container">
           <table id="job-table">
             <thead><tr>
-              <th>JOB ID</th><th>NAME</th><th>PARTITION</th>
-              <th>STATE</th><th>ELAPSED</th><th>LIMIT</th>
-              <th>NODES</th><th>CPUS</th><th>MEM</th>
-              <th>NODELIST</th><th>REASON / PRIORITY</th>
+              <th class="sortable active-sort" data-sort-key="jobid" data-sort-type="number" data-sort-indicator="↓" aria-sort="descending">JOB ID</th>
+              <th class="sortable" data-sort-key="name" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">NAME</th>
+              <th class="sortable" data-sort-key="partition" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">PARTITION</th>
+              <th class="sortable" data-sort-key="state" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">STATE</th>
+              <th class="sortable" data-sort-key="elapsed" data-sort-type="duration" data-sort-indicator="↕" aria-sort="none">ELAPSED</th>
+              <th class="sortable" data-sort-key="timelimit" data-sort-type="duration" data-sort-indicator="↕" aria-sort="none">LIMIT</th>
+              <th class="sortable" data-sort-key="nodes" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">NODES</th>
+              <th class="sortable" data-sort-key="cpus" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">CPUS</th>
+              <th class="sortable" data-sort-key="mem" data-sort-type="memory" data-sort-indicator="↕" aria-sort="none">MEM</th>
+              <th class="sortable" data-sort-key="nodelist" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">NODELIST</th>
+              <th class="sortable" data-sort-key="reasonSort" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">REASON / PRIORITY</th>
             </tr></thead>
             <tbody id="job-tbody">
               <tr class="empty-row"><td colspan="11">
@@ -759,9 +766,14 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
         <div class="table-container">
           <table id="info-table">
             <thead><tr>
-              <th>PARTITION</th><th>AVAIL</th><th>TIME LIMIT</th>
-              <th>NODES</th><th>STATE</th><th>NODELIST</th>
-              <th>CPUS (A/I/O/T)</th><th>GRES</th>
+              <th class="sortable active-sort" data-sort-key="partition" data-sort-type="string" data-sort-indicator="↑" aria-sort="ascending">PARTITION</th>
+              <th class="sortable" data-sort-key="avail" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">AVAIL</th>
+              <th class="sortable" data-sort-key="timelimit" data-sort-type="duration" data-sort-indicator="↕" aria-sort="none">TIME LIMIT</th>
+              <th class="sortable" data-sort-key="nodes" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">NODES</th>
+              <th class="sortable" data-sort-key="state" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">STATE</th>
+              <th class="sortable" data-sort-key="nodelist" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">NODELIST</th>
+              <th class="sortable" data-sort-key="cpus" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">CPUS (A/I/O/T)</th>
+              <th class="sortable" data-sort-key="gres" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">GRES</th>
             </tr></thead>
             <tbody id="info-tbody">
               <tr><td colspan="8">
@@ -966,6 +978,9 @@ let countdown = cfg.refreshInterval;
 let uptimeStart = Date.now();
 let connected = false;
 let scanWaveFrame = null;
+let queueSort = { key: 'jobid', direction: 'desc', type: 'number' };
+let infoRows = [];
+let infoSort = { key: 'partition', direction: 'asc', type: 'string' };
 let historyRows = [];
 let historySort = { key: 'jobid', direction: 'desc', type: 'number' };
 
@@ -1335,11 +1350,16 @@ function renderQueue(jobs) {
   // Render rows
   if (!jobs.length) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="11"><div class="empty-state"><div class="empty-icon">🎉</div><div>No active jobs — all clear!</div></div></td></tr>`;
+    updateSortableHeaders('#job-table', queueSort);
     return;
   }
 
   const existing = {};
   tbody.querySelectorAll('tr[data-jid]').forEach(r => { existing[r.dataset.jid] = r; });
+  const sortedJobs = sortRows(jobs.map(job => ({
+    ...job,
+    reasonSort: (job.reason && job.reason !== 'None') ? job.reason : (job.priority || ''),
+  })), queueSort);
 
   // Remove rows no longer in list
   for (const [jid, row] of Object.entries(existing)) {
@@ -1358,7 +1378,7 @@ function renderQueue(jobs) {
     }
   }
 
-  for (const j of jobs) {
+  for (const j of sortedJobs) {
     const priority = parseFloat(j.priority) || 0;
     const prioClass = priority > 0.9 ? 'high' : priority < 0.5 ? 'low' : '';
     const prioLabel = j.priority && j.priority !== 'N/A' ? `<span class="priority-chip ${prioClass}">${j.priority}</span>` : '';
@@ -1400,6 +1420,7 @@ function renderQueue(jobs) {
       }
       if (j.state === 'RUNNING') row.classList.add('row-glow-running');
       else row.classList.remove('row-glow-running');
+      tbody.appendChild(row);
     } else {
       const row = document.createElement('tr');
       row.dataset.jid = j.jobid;
@@ -1410,11 +1431,11 @@ function renderQueue(jobs) {
         row.classList.add('row-enter');
         row.addEventListener('animationend', () => row.classList.remove('row-enter'), {once:true});
       }
-      // insert in correct position
       tbody.querySelectorAll('.empty-row').forEach(r => r.remove());
       tbody.appendChild(row);
     }
   }
+  updateSortableHeaders('#job-table', queueSort);
 }
 
 // ─────────────────────────────────────────
@@ -1510,22 +1531,36 @@ async function fetchInfo() {
 
 function renderInfo(raw) {
   const tbody = $('info-tbody');
-  const rows = (raw||'').trim().split('\n').filter(l=>l.trim());
-  if (!rows.length) {
+  infoRows = (raw || '').trim().split('\n').filter(line => line.trim()).map(line => {
+    const [partition,avail,timelimit,nodes,state,nodelist,cpus,gres] = line.split('\t');
+    return {
+      partition: partition || '',
+      avail: avail || '',
+      timelimit: timelimit || '',
+      nodes: nodes || '',
+      state: state || '',
+      nodelist: nodelist || '',
+      cpus: cpus || '',
+      gres: gres || '',
+    };
+  });
+  if (!infoRows.length) {
     tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div>No node data.</div></div></td></tr>`;
+    updateSortableHeaders('#info-table', infoSort);
     return;
   }
-  tbody.innerHTML = rows.map(line => {
-    const [partition,avail,timelimit,nodes,state,nodelist,cpus,gres] = line.split('\t');
-    const sc = nodeStateClass(state);
+  const rows = sortRows(infoRows, infoSort, 'partition', 'string');
+  tbody.innerHTML = rows.map(row => {
+    const sc = nodeStateClass(row.state);
     return `<tr>
-      <td>${esc(partition||'')}</td><td>${esc(avail||'')}</td><td>${esc(timelimit||'')}</td>
-      <td>${esc(nodes||'')}</td>
-      <td class="${sc}">${esc(state||'')}</td>
-      <td title="${esc(nodelist||'')}">${esc((nodelist||'').slice(0,30))}</td>
-      <td>${esc(cpus||'')}</td><td>${esc(gres||'')}</td>
+      <td>${esc(row.partition)}</td><td>${esc(row.avail)}</td><td>${esc(row.timelimit)}</td>
+      <td>${esc(row.nodes)}</td>
+      <td class="${sc}">${esc(row.state)}</td>
+      <td title="${esc(row.nodelist)}">${esc(row.nodelist.slice(0,30))}</td>
+      <td>${esc(row.cpus)}</td><td>${esc(row.gres)}</td>
     </tr>`;
   }).join('');
+  updateSortableHeaders('#info-table', infoSort);
 }
 
 // ─────────────────────────────────────────
@@ -1564,6 +1599,68 @@ function parseDurationToSeconds(value) {
   return total;
 }
 
+function parseMemoryToBytes(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^([0-9]*\.?[0-9]+)\s*([KMGTP]?)(I?B?)?$/i);
+  if (!match) return Number.NaN;
+  const amount = Number(match[1]);
+  const unit = (match[2] || '').toUpperCase();
+  const powers = { '': 0, K: 1, M: 2, G: 3, T: 4, P: 5 };
+  return amount * (1024 ** (powers[unit] || 0));
+}
+
+function compareSortValues(a, b, type) {
+  if (type === 'number') {
+    return (parseFloat(a) || 0) - (parseFloat(b) || 0);
+  }
+  if (type === 'duration') {
+    return (parseDurationToSeconds(a) || 0) - (parseDurationToSeconds(b) || 0);
+  }
+  if (type === 'datetime') {
+    return (Date.parse(a) || 0) - (Date.parse(b) || 0);
+  }
+  if (type === 'memory') {
+    return (parseMemoryToBytes(a) || 0) - (parseMemoryToBytes(b) || 0);
+  }
+  return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function sortRows(rows, sortState, fallbackKey='jobid', fallbackType='number') {
+  const { key, direction, type } = sortState;
+  const directionFactor = direction === 'asc' ? 1 : -1;
+  return [...rows].sort((left, right) => {
+    const primary = compareSortValues(left[key], right[key], type);
+    if (primary !== 0) return primary * directionFactor;
+    return compareSortValues(right[fallbackKey], left[fallbackKey], fallbackType);
+  });
+}
+
+function updateSortableHeaders(tableSelector, sortState) {
+  document.querySelectorAll(`${tableSelector} th.sortable`).forEach(th => {
+    const isActive = th.dataset.sortKey === sortState.key;
+    th.classList.toggle('active-sort', isActive);
+    th.dataset.sortIndicator = isActive ? (sortState.direction === 'asc' ? '↑' : '↓') : '↕';
+    th.setAttribute('aria-sort', isActive ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none');
+  });
+}
+
+function setupTableSorting(tableSelector, sortState, onSort) {
+  document.querySelectorAll(`${tableSelector} th.sortable`).forEach(th => {
+    th.addEventListener('click', () => {
+      const nextKey = th.dataset.sortKey;
+      const nextType = th.dataset.sortType || 'string';
+      if (sortState.key === nextKey) {
+        sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortState.key = nextKey;
+        sortState.direction = nextKey === 'jobid' ? 'desc' : 'asc';
+      }
+      sortState.type = nextType;
+      onSort();
+    });
+  });
+}
+
 function parseHistoryRows(raw) {
   return (raw || '').trim().split('\n')
     .filter(line => line.trim() && !line.startsWith('JobID'))
@@ -1587,47 +1684,15 @@ function parseHistoryRows(raw) {
     .filter(Boolean);
 }
 
-function compareHistoryValues(a, b, type) {
-  if (type === 'number') {
-    return (parseFloat(a) || 0) - (parseFloat(b) || 0);
-  }
-  if (type === 'duration') {
-    return (parseDurationToSeconds(a) || 0) - (parseDurationToSeconds(b) || 0);
-  }
-  if (type === 'datetime') {
-    return (Date.parse(a) || 0) - (Date.parse(b) || 0);
-  }
-  return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
-}
-
-function sortHistoryRows(rows) {
-  const { key, direction, type } = historySort;
-  const directionFactor = direction === 'asc' ? 1 : -1;
-  return [...rows].sort((left, right) => {
-    const primary = compareHistoryValues(left[key], right[key], type);
-    if (primary !== 0) return primary * directionFactor;
-    return compareHistoryValues(right.jobid, left.jobid, 'number');
-  });
-}
-
-function updateHistorySortHeaders() {
-  document.querySelectorAll('#history-table th.sortable').forEach(th => {
-    const isActive = th.dataset.sortKey === historySort.key;
-    th.classList.toggle('active-sort', isActive);
-    th.dataset.sortIndicator = isActive ? (historySort.direction === 'asc' ? '↑' : '↓') : '↕';
-    th.setAttribute('aria-sort', isActive ? (historySort.direction === 'asc' ? 'ascending' : 'descending') : 'none');
-  });
-}
-
 function renderHistoryTable() {
   const tbody = $('history-tbody');
   if (!historyRows.length) {
     tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div>No job history found.</div></div></td></tr>`;
-    updateHistorySortHeaders();
+    updateSortableHeaders('#history-table', historySort);
     return;
   }
 
-  const rows = sortHistoryRows(historyRows);
+  const rows = sortRows(historyRows, historySort);
   tbody.innerHTML = rows.slice(0, 200).map(job => {
     const sc = 'hist-' + (job.state || '').split(' ')[0].replace('+', '').toUpperCase();
     return `<tr>
@@ -1643,7 +1708,7 @@ function renderHistoryTable() {
       <td>${esc(job.exitcode)}</td>
     </tr>`;
   }).join('');
-  updateHistorySortHeaders();
+  updateSortableHeaders('#history-table', historySort);
 }
 
 function renderHistory(raw) {
@@ -1652,21 +1717,29 @@ function renderHistory(raw) {
 }
 
 function setupHistorySorting() {
-  document.querySelectorAll('#history-table th.sortable').forEach(th => {
-    th.addEventListener('click', () => {
-      const nextKey = th.dataset.sortKey;
-      const nextType = th.dataset.sortType || 'string';
-      if (historySort.key === nextKey) {
-        historySort.direction = historySort.direction === 'asc' ? 'desc' : 'asc';
-      } else {
-        historySort = {
-          key: nextKey,
-          direction: nextKey === 'jobid' ? 'desc' : 'asc',
-          type: nextType,
-        };
-      }
-      renderHistoryTable();
-    });
+  setupTableSorting('#history-table', historySort, renderHistoryTable);
+}
+
+function setupQueueSorting() {
+  setupTableSorting('#job-table', queueSort, () => renderQueue(Object.values(prevJobs)));
+}
+
+function setupInfoSorting() {
+  setupTableSorting('#info-table', infoSort, () => {
+    if (infoRows.length) {
+      renderInfo(infoRows.map(row => [
+        row.partition,
+        row.avail,
+        row.timelimit,
+        row.nodes,
+        row.state,
+        row.nodelist,
+        row.cpus,
+        row.gres,
+      ].join('\t')).join('\n'));
+    } else {
+      updateSortableHeaders('#info-table', infoSort);
+    }
   });
 }
 
@@ -2064,6 +2137,8 @@ function setupRowClickHandlers() {
 setStatus(cfg.demoMode ? 'demo' : 'connecting');
 fetchQueue();
 setupRowClickHandlers();
+setupQueueSorting();
+setupInfoSorting();
 setupHistorySorting();
 startRefreshCycle();
 $('cfg-sounds').checked = cfg.sounds;
