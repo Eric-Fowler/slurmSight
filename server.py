@@ -52,6 +52,7 @@ ROUTES = {
         "--format=JobID,JobName,State,Elapsed,TotalCPU,MaxRSS,Partition,NodeList,Start,End,ExitCode",
     ]),
     "/api/sdiag": lambda: run_slurm(["sdiag"]),
+    "/api/gpunodes": lambda: run_slurm(["scontrol", "show", "node", "-o"]),
 }
 
 def cancel_job(jobid):

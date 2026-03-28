@@ -161,6 +161,28 @@ body{display:flex;flex-direction:column}
 @keyframes stat-bump{0%{transform:scale(1.4)}100%{transform:scale(1)}}
 
 /* ─────────────────────────────────────────────
+   GPU Type Breakdown
+───────────────────────────────────────────── */
+.gpu-type-breakdown{
+  display:flex;flex-wrap:wrap;gap:8px;
+  padding:10px 12px;border-radius:var(--radius);
+  background:var(--surf);border:1px solid var(--border);
+}
+.gpu-type-chip{
+  border:1px solid var(--border);background:var(--bg2);color:var(--text);
+  border-radius:8px;padding:6px 10px;cursor:pointer;
+  font-family:var(--font-mono);font-size:11px;letter-spacing:.5px;
+  display:flex;align-items:center;gap:10px;transition:all .2s;
+}
+.gpu-type-chip:hover{border-color:var(--border2);background:var(--surf2)}
+.gpu-type-chip.active{
+  border-color:var(--primary);background:var(--primary-dim);
+  color:var(--primary);box-shadow:var(--glow-primary);
+}
+.gpu-type-chip .counts{color:var(--text-dim);font-size:10px}
+.gpu-type-chip.active .counts{color:var(--primary)}
+
+/* ─────────────────────────────────────────────
    Refresh Bar
 ───────────────────────────────────────────── */
 .refresh-bar{
@@ -701,6 +723,8 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
     <button class="tab active" data-panel="queue">⚡ QUEUE</button>
     <button class="tab" data-panel="share">📊 FAIRSHARE</button>
     <button class="tab" data-panel="info">🖥 NODES</button>
+    <button class="tab" data-panel="gpu">🎮 GPU NODES</button>
+    <button class="tab" data-panel="cpu">🧠 CPU NODES</button>
     <button class="tab" data-panel="history">📜 HISTORY</button>
     <button class="tab" data-panel="settings">⚙ CONFIG</button>
   </nav>
@@ -815,6 +839,88 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
                 <div class="empty-state">
                   <div class="empty-icon">🖥</div>
                   <div>Click Refresh to load node data.</div>
+                </div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── GPU Nodes Panel ── -->
+    <div id="panel-gpu" class="panel">
+      <div class="panel-hdr">
+        <h2>GPU NODE STATUS</h2>
+        <div class="panel-hdr-right">
+          <button class="btn-sm" id="btn-refresh-gpu">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card running"><div class="stat-value" id="gpu-stat-active">0</div><div class="stat-label">ACTIVE GPUS</div></div>
+        <div class="stat-card pending"><div class="stat-value" id="gpu-stat-inactive">0</div><div class="stat-label">INACTIVE GPUS</div></div>
+        <div class="stat-card other"><div class="stat-value" id="gpu-stat-offline">0</div><div class="stat-label">OFFLINE GPUS</div></div>
+        <div class="stat-card total"><div class="stat-value" id="gpu-stat-total">0</div><div class="stat-label">TOTAL GPUS</div></div>
+      </div>
+      <div id="gpu-type-breakdown" class="gpu-type-breakdown"></div>
+      <div class="table-outer" style="flex:1;min-height:200px">
+        <div class="table-container">
+          <table id="gpu-table">
+            <thead><tr>
+              <th class="sortable active-sort" data-sort-key="node" data-sort-type="string" data-sort-indicator="↑" aria-sort="ascending">NODE</th>
+              <th class="sortable" data-sort-key="partition" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">PARTITION</th>
+              <th class="sortable" data-sort-key="state" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">STATE</th>
+              <th class="sortable" data-sort-key="active" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">ACTIVE</th>
+              <th class="sortable" data-sort-key="inactive" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">INACTIVE</th>
+              <th class="sortable" data-sort-key="offline" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">OFFLINE</th>
+              <th class="sortable" data-sort-key="total" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">TOTAL</th>
+              <th class="sortable" data-sort-key="model" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">GPU TYPE</th>
+            </tr></thead>
+            <tbody id="gpu-tbody">
+              <tr><td colspan="8">
+                <div class="empty-state">
+                  <div class="empty-icon">🎮</div>
+                  <div>Click Refresh to load GPU node data.</div>
+                </div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CPU Nodes Panel ── -->
+    <div id="panel-cpu" class="panel">
+      <div class="panel-hdr">
+        <h2>CPU NODE STATUS</h2>
+        <div class="panel-hdr-right">
+          <button class="btn-sm" id="btn-refresh-cpu">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card running"><div class="stat-value" id="cpu-stat-active">0</div><div class="stat-label">ACTIVE CPUS</div></div>
+        <div class="stat-card pending"><div class="stat-value" id="cpu-stat-inactive">0</div><div class="stat-label">INACTIVE CPUS</div></div>
+        <div class="stat-card other"><div class="stat-value" id="cpu-stat-offline">0</div><div class="stat-label">OFFLINE CPUS</div></div>
+        <div class="stat-card total"><div class="stat-value" id="cpu-stat-total">0</div><div class="stat-label">TOTAL CPUS</div></div>
+      </div>
+      <div id="cpu-type-breakdown" class="gpu-type-breakdown"></div>
+      <div class="table-outer" style="flex:1;min-height:200px">
+        <div class="table-container">
+          <table id="cpu-table">
+            <thead><tr>
+              <th class="sortable active-sort" data-sort-key="node" data-sort-type="string" data-sort-indicator="↑" aria-sort="ascending">NODE</th>
+              <th class="sortable" data-sort-key="partition" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">PARTITION</th>
+              <th class="sortable" data-sort-key="state" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">STATE</th>
+              <th class="sortable" data-sort-key="active" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">ACTIVE</th>
+              <th class="sortable" data-sort-key="inactive" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">INACTIVE</th>
+              <th class="sortable" data-sort-key="offline" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">OFFLINE</th>
+              <th class="sortable" data-sort-key="total" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">TOTAL</th>
+              <th class="sortable" data-sort-key="arch" data-sort-type="string" data-sort-indicator="↕" aria-sort="none">CPU ARCH</th>
+            </tr></thead>
+            <tbody id="cpu-tbody">
+              <tr><td colspan="8">
+                <div class="empty-state">
+                  <div class="empty-icon">🧠</div>
+                  <div>Click Refresh to load CPU node data.</div>
                 </div>
               </td></tr>
             </tbody>
@@ -1016,6 +1122,12 @@ let scanWaveFrame = null;
 let queueSort = { key: 'jobid', direction: 'desc', type: 'number' };
 let infoRows = [];
 let infoSort = { key: 'partition', direction: 'asc', type: 'string' };
+let gpuRows = [];
+let gpuSort = { key: 'node', direction: 'asc', type: 'string' };
+let gpuTypeFilter = 'ALL';
+let cpuRows = [];
+let cpuSort = { key: 'node', direction: 'asc', type: 'string' };
+let cpuTypeFilter = 'ALL';
 let shareRaw = '';
 let shareSort = { key: 'fairShare', direction: 'desc' };
 let shareFilter = '';
@@ -1603,6 +1715,347 @@ function renderInfo(raw) {
   updateSortableHeaders('#info-table', infoSort);
 }
 
+function parseScontrolLine(line) {
+  const fields = {};
+  const re = /([A-Za-z][A-Za-z0-9]*)=([^\s]+)/g;
+  let match;
+  while ((match = re.exec(line)) !== null) fields[match[1]] = match[2];
+  return fields;
+}
+
+function parseTresGpuCount(tres) {
+  if (!tres) return 0;
+  return String(tres).split(',').reduce((sum, item) => {
+    const [key, value] = item.split('=', 2);
+    if (!key || value === undefined) return sum;
+    if (!key.startsWith('gres/gpu')) return sum;
+    return sum + (parseFloat(value) || 0);
+  }, 0);
+}
+
+function parseTresCpuCount(tres) {
+  if (!tres) return 0;
+  return String(tres).split(',').reduce((sum, item) => {
+    const [key, value] = item.split('=', 2);
+    if (key !== 'cpu') return sum;
+    return sum + (parseFloat(value) || 0);
+  }, 0);
+}
+
+function parseGpuModel(gres) {
+  const match = String(gres || '').match(/gpu:([^:,()]+)/i);
+  return match ? match[1] : 'GPU';
+}
+
+function isOfflineNodeState(state) {
+  const s = String(state || '').toLowerCase();
+  return ['down', 'drain', 'drng', 'maint', 'fail', 'power_down', 'unknown', 'not_responding'].some(token => s.includes(token));
+}
+
+function buildGpuRows(raw) {
+  return (raw || '').trim().split('\n').filter(line => line.trim()).map(line => {
+    const row = parseScontrolLine(line);
+    const total = parseTresGpuCount(row.CfgTRES);
+    if (total <= 0) return null;
+    const allocated = parseTresGpuCount(row.AllocTRES);
+    const offline = isOfflineNodeState(row.State) ? total : 0;
+    const active = offline ? 0 : Math.min(total, Math.max(0, allocated));
+    const inactive = offline ? 0 : Math.max(0, total - active);
+    return {
+      node: row.NodeName || 'unknown',
+      partition: row.Partitions || 'unknown',
+      state: (row.State || 'unknown').split('+')[0],
+      active,
+      inactive,
+      offline,
+      total,
+      model: parseGpuModel(row.Gres),
+    };
+  }).filter(Boolean);
+}
+
+function summarizeGpuTypes(rows) {
+  const byType = new Map();
+  for (const row of rows) {
+    const key = row.model || 'GPU';
+    if (!byType.has(key)) byType.set(key, { model: key, active: 0, inactive: 0, offline: 0, total: 0, nodes: 0 });
+    const curr = byType.get(key);
+    curr.active += row.active || 0;
+    curr.inactive += row.inactive || 0;
+    curr.offline += row.offline || 0;
+    curr.total += row.total || 0;
+    curr.nodes += 1;
+  }
+  return [...byType.values()].sort((a, b) => b.total - a.total || a.model.localeCompare(b.model));
+}
+
+function renderGpuTypeBreakdown(rows) {
+  const box = $('gpu-type-breakdown');
+  if (!box) return;
+  if (!rows.length) {
+    box.innerHTML = '';
+    return;
+  }
+
+  const active = rows.reduce((sum, row) => sum + (row.active || 0), 0);
+  const inactive = rows.reduce((sum, row) => sum + (row.inactive || 0), 0);
+  const offline = rows.reduce((sum, row) => sum + (row.offline || 0), 0);
+  const total = rows.reduce((sum, row) => sum + (row.total || 0), 0);
+  const typeTotals = summarizeGpuTypes(rows);
+
+  const allChip = `<button class="gpu-type-chip ${gpuTypeFilter === 'ALL' ? 'active' : ''}" data-gpu-type="ALL">
+    <span>ALL TYPES</span>
+    <span class="counts">A ${active} / I ${inactive} / O ${offline} / T ${total}</span>
+  </button>`;
+
+  const typeChips = typeTotals.map(item => `<button class="gpu-type-chip ${gpuTypeFilter === item.model ? 'active' : ''}" data-gpu-type="${esc(item.model)}">
+    <span>${esc(item.model)} (${item.nodes})</span>
+    <span class="counts">A ${item.active} / I ${item.inactive} / O ${item.offline} / T ${item.total}</span>
+  </button>`).join('');
+
+  box.innerHTML = allChip + typeChips;
+}
+
+function setupGpuTypeBreakdown() {
+  const box = $('gpu-type-breakdown');
+  if (!box) return;
+  box.addEventListener('click', (e) => {
+    const chip = e.target.closest('button[data-gpu-type]');
+    if (!chip) return;
+    gpuTypeFilter = chip.dataset.gpuType || 'ALL';
+    renderGpuTypeBreakdown(gpuRows);
+    renderGpuTable();
+  });
+}
+
+function renderGpuTable() {
+  const tbody = $('gpu-tbody');
+  const activeTotal = gpuRows.reduce((sum, row) => sum + (row.active || 0), 0);
+  const inactiveTotal = gpuRows.reduce((sum, row) => sum + (row.inactive || 0), 0);
+  const offlineTotal = gpuRows.reduce((sum, row) => sum + (row.offline || 0), 0);
+  const totalTotal = gpuRows.reduce((sum, row) => sum + (row.total || 0), 0);
+  animNum('gpu-stat-active', activeTotal);
+  animNum('gpu-stat-inactive', inactiveTotal);
+  animNum('gpu-stat-offline', offlineTotal);
+  animNum('gpu-stat-total', totalTotal);
+
+  if (!gpuRows.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🎮</div><div>No GPU nodes found.</div></div></td></tr>`;
+    updateSortableHeaders('#gpu-table', gpuSort);
+    return;
+  }
+  const filteredRows = gpuTypeFilter === 'ALL'
+    ? gpuRows
+    : gpuRows.filter(row => row.model === gpuTypeFilter);
+  if (!filteredRows.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div>No nodes found for GPU type ${esc(gpuTypeFilter)}.</div></div></td></tr>`;
+    updateSortableHeaders('#gpu-table', gpuSort);
+    return;
+  }
+  const rows = sortRows(filteredRows, gpuSort, 'node', 'string');
+  tbody.innerHTML = rows.map(row => {
+    const stateClass = nodeStateClass(row.state);
+    return `<tr>
+      <td>${esc(row.node)}</td>
+      <td>${esc(row.partition)}</td>
+      <td class="${stateClass}">${esc(row.state)}</td>
+      <td>${esc(row.active)}</td>
+      <td>${esc(row.inactive)}</td>
+      <td>${esc(row.offline)}</td>
+      <td>${esc(row.total)}</td>
+      <td>${esc(row.model)}</td>
+    </tr>`;
+  }).join('');
+  updateSortableHeaders('#gpu-table', gpuSort);
+}
+
+function renderGpuNodes(raw) {
+  gpuRows = buildGpuRows(raw);
+  const knownTypes = new Set(gpuRows.map(row => row.model));
+  if (gpuTypeFilter !== 'ALL' && !knownTypes.has(gpuTypeFilter)) gpuTypeFilter = 'ALL';
+  renderGpuTypeBreakdown(gpuRows);
+  renderGpuTable();
+}
+
+function parseCpuArch(row) {
+  return row.Arch || 'unknown';
+}
+
+function buildCpuRows(raw) {
+  return (raw || '').trim().split('\n').filter(line => line.trim()).map(line => {
+    const row = parseScontrolLine(line);
+    const total = parseTresCpuCount(row.CfgTRES);
+    if (total <= 0) return null;
+    const allocated = parseTresCpuCount(row.AllocTRES);
+    const offline = isOfflineNodeState(row.State) ? total : 0;
+    const active = offline ? 0 : Math.min(total, Math.max(0, allocated));
+    const inactive = offline ? 0 : Math.max(0, total - active);
+    return {
+      node: row.NodeName || 'unknown',
+      partition: row.Partitions || 'unknown',
+      state: (row.State || 'unknown').split('+')[0],
+      active,
+      inactive,
+      offline,
+      total,
+      arch: parseCpuArch(row),
+    };
+  }).filter(Boolean);
+}
+
+function summarizeCpuTypes(rows) {
+  const byType = new Map();
+  for (const row of rows) {
+    const key = row.arch || 'unknown';
+    if (!byType.has(key)) byType.set(key, { arch: key, active: 0, inactive: 0, offline: 0, total: 0, nodes: 0 });
+    const curr = byType.get(key);
+    curr.active += row.active || 0;
+    curr.inactive += row.inactive || 0;
+    curr.offline += row.offline || 0;
+    curr.total += row.total || 0;
+    curr.nodes += 1;
+  }
+  return [...byType.values()].sort((a, b) => b.total - a.total || a.arch.localeCompare(b.arch));
+}
+
+function renderCpuTypeBreakdown(rows) {
+  const box = $('cpu-type-breakdown');
+  if (!box) return;
+  if (!rows.length) {
+    box.innerHTML = '';
+    return;
+  }
+
+  const active = rows.reduce((sum, row) => sum + (row.active || 0), 0);
+  const inactive = rows.reduce((sum, row) => sum + (row.inactive || 0), 0);
+  const offline = rows.reduce((sum, row) => sum + (row.offline || 0), 0);
+  const total = rows.reduce((sum, row) => sum + (row.total || 0), 0);
+  const typeTotals = summarizeCpuTypes(rows);
+
+  const allChip = `<button class="gpu-type-chip ${cpuTypeFilter === 'ALL' ? 'active' : ''}" data-cpu-type="ALL">
+    <span>ALL ARCH</span>
+    <span class="counts">A ${active} / I ${inactive} / O ${offline} / T ${total}</span>
+  </button>`;
+
+  const typeChips = typeTotals.map(item => `<button class="gpu-type-chip ${cpuTypeFilter === item.arch ? 'active' : ''}" data-cpu-type="${esc(item.arch)}">
+    <span>${esc(item.arch)} (${item.nodes})</span>
+    <span class="counts">A ${item.active} / I ${item.inactive} / O ${item.offline} / T ${item.total}</span>
+  </button>`).join('');
+
+  box.innerHTML = allChip + typeChips;
+}
+
+function setupCpuTypeBreakdown() {
+  const box = $('cpu-type-breakdown');
+  if (!box) return;
+  box.addEventListener('click', (e) => {
+    const chip = e.target.closest('button[data-cpu-type]');
+    if (!chip) return;
+    cpuTypeFilter = chip.dataset.cpuType || 'ALL';
+    renderCpuTypeBreakdown(cpuRows);
+    renderCpuTable();
+  });
+}
+
+function renderCpuTable() {
+  const tbody = $('cpu-tbody');
+  const activeTotal = cpuRows.reduce((sum, row) => sum + (row.active || 0), 0);
+  const inactiveTotal = cpuRows.reduce((sum, row) => sum + (row.inactive || 0), 0);
+  const offlineTotal = cpuRows.reduce((sum, row) => sum + (row.offline || 0), 0);
+  const totalTotal = cpuRows.reduce((sum, row) => sum + (row.total || 0), 0);
+  animNum('cpu-stat-active', activeTotal);
+  animNum('cpu-stat-inactive', inactiveTotal);
+  animNum('cpu-stat-offline', offlineTotal);
+  animNum('cpu-stat-total', totalTotal);
+
+  if (!cpuRows.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🧠</div><div>No CPU nodes found.</div></div></td></tr>`;
+    updateSortableHeaders('#cpu-table', cpuSort);
+    return;
+  }
+  const filteredRows = cpuTypeFilter === 'ALL'
+    ? cpuRows
+    : cpuRows.filter(row => row.arch === cpuTypeFilter);
+  if (!filteredRows.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div>No nodes found for CPU arch ${esc(cpuTypeFilter)}.</div></div></td></tr>`;
+    updateSortableHeaders('#cpu-table', cpuSort);
+    return;
+  }
+  const rows = sortRows(filteredRows, cpuSort, 'node', 'string');
+  tbody.innerHTML = rows.map(row => {
+    const stateClass = nodeStateClass(row.state);
+    return `<tr>
+      <td>${esc(row.node)}</td>
+      <td>${esc(row.partition)}</td>
+      <td class="${stateClass}">${esc(row.state)}</td>
+      <td>${esc(row.active)}</td>
+      <td>${esc(row.inactive)}</td>
+      <td>${esc(row.offline)}</td>
+      <td>${esc(row.total)}</td>
+      <td>${esc(row.arch)}</td>
+    </tr>`;
+  }).join('');
+  updateSortableHeaders('#cpu-table', cpuSort);
+}
+
+function renderCpuNodes(raw) {
+  cpuRows = buildCpuRows(raw);
+  const knownTypes = new Set(cpuRows.map(row => row.arch));
+  if (cpuTypeFilter !== 'ALL' && !knownTypes.has(cpuTypeFilter)) cpuTypeFilter = 'ALL';
+  renderCpuTypeBreakdown(cpuRows);
+  renderCpuTable();
+}
+
+async function fetchCpuNodes() {
+  const tbody = $('cpu-tbody');
+  tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><span class="spinner"></span> Loading…</div></td></tr>`;
+  renderCpuTypeBreakdown([]);
+  animNum('cpu-stat-active', 0);
+  animNum('cpu-stat-inactive', 0);
+  animNum('cpu-stat-offline', 0);
+  animNum('cpu-stat-total', 0);
+  if (cfg.demoMode) {
+    renderCpuNodes(DEMO_CPU_NODES);
+    return;
+  }
+  try {
+    const r = await fetch(cfg.serverUrl + '/api/gpunodes', {signal: AbortSignal.timeout(10000)});
+    const data = await r.json();
+    if (!data.ok) {
+      tbody.innerHTML = `<tr><td colspan="8" style="color:var(--danger);padding:20px">${esc(data.err)}</td></tr>`;
+      return;
+    }
+    renderCpuNodes(data.out || '');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="8" style="color:var(--danger);padding:20px">${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function fetchGpuNodes() {
+  const tbody = $('gpu-tbody');
+  tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><span class="spinner"></span> Loading…</div></td></tr>`;
+  renderGpuTypeBreakdown([]);
+  animNum('gpu-stat-active', 0);
+  animNum('gpu-stat-inactive', 0);
+  animNum('gpu-stat-offline', 0);
+  animNum('gpu-stat-total', 0);
+  if (cfg.demoMode) {
+    renderGpuNodes(DEMO_GPU_NODES);
+    return;
+  }
+  try {
+    const r = await fetch(cfg.serverUrl + '/api/gpunodes', {signal: AbortSignal.timeout(10000)});
+    const data = await r.json();
+    if (!data.ok) {
+      tbody.innerHTML = `<tr><td colspan="8" style="color:var(--danger);padding:20px">${esc(data.err)}</td></tr>`;
+      return;
+    }
+    renderGpuNodes(data.out || '');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="8" style="color:var(--danger);padding:20px">${esc(e.message)}</td></tr>`;
+  }
+}
+
 // ─────────────────────────────────────────
 // History
 // ─────────────────────────────────────────
@@ -1783,6 +2236,14 @@ function setupInfoSorting() {
   });
 }
 
+function setupGpuSorting() {
+  setupTableSorting('#gpu-table', gpuSort, renderGpuTable);
+}
+
+function setupCpuSorting() {
+  setupTableSorting('#cpu-table', cpuSort, renderCpuTable);
+}
+
 // ─────────────────────────────────────────
 // Tabs
 // ─────────────────────────────────────────
@@ -1796,6 +2257,8 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (panel) panel.classList.add('active');
     if (btn.dataset.panel === 'share') fetchShare();
     if (btn.dataset.panel === 'info') fetchInfo();
+    if (btn.dataset.panel === 'gpu') fetchGpuNodes();
+    if (btn.dataset.panel === 'cpu') fetchCpuNodes();
     if (btn.dataset.panel === 'history') fetchHistory();
   });
 });
@@ -1806,6 +2269,8 @@ document.querySelectorAll('.tab').forEach(btn => {
 $('btn-refresh').onclick = () => { countdown = cfg.refreshInterval; fetchQueue(); };
 $('btn-refresh-share').onclick = fetchShare;
 $('btn-refresh-info').onclick = fetchInfo;
+$('btn-refresh-gpu').onclick = fetchGpuNodes;
+$('btn-refresh-cpu').onclick = fetchCpuNodes;
 $('btn-refresh-history').onclick = fetchHistory;
 $('share-filter').oninput = function() {
   shareFilter = this.value;
@@ -1905,6 +2370,21 @@ const DEMO_SACCT = [
   '111975|preprocess|CANCELLED|00:05:10|00:05:08|4096K |cpu|cn22     |2024-01-15T03:00:00|2024-01-15T03:05:10|0:0',
   '111970|eval_run |COMPLETED|00:30:00|00:29:45|12288K|cpu|cn05      |2024-01-15T02:00:00|2024-01-15T02:30:00|0:0',
 ].map(r => r.split('|').join('|')).join('\n');
+
+const DEMO_GPU_NODES = [
+  'NodeName=gpu01 Arch=x86_64 CoresPerSocket=32 RealMemory=515000 State=IDLE ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=gpu BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=64,mem=515000M,billing=64,gres/gpu:a100=8 AllocTRES= Gres=gpu:a100:8',
+  'NodeName=gpu02 Arch=x86_64 CoresPerSocket=32 RealMemory=515000 State=MIXED ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=gpu BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=64,mem=515000M,billing=64,gres/gpu:a100=8 AllocTRES=cpu=40,mem=220000M,gres/gpu:a100=5 Gres=gpu:a100:8',
+  'NodeName=gpu03 Arch=x86_64 CoresPerSocket=32 RealMemory=515000 State=ALLOCATED ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=gpu BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=64,mem=515000M,billing=64,gres/gpu:a100=8 AllocTRES=cpu=64,mem=500000M,gres/gpu:a100=8 Gres=gpu:a100:8',
+  'NodeName=gpu04 Arch=x86_64 CoresPerSocket=32 RealMemory=515000 State=DOWN+DRAIN ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=gpu BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=64,mem=515000M,billing=64,gres/gpu:a100=8 AllocTRES= Gres=gpu:a100:8',
+].join('\n');
+
+const DEMO_CPU_NODES = [
+  'NodeName=cn01 Arch=x86_64 CoresPerSocket=32 RealMemory=257000 State=IDLE ThreadsPerCore=2 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=cpu BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=64,mem=257000M,billing=64 AllocTRES=cpu=0,mem=0M',
+  'NodeName=cn02 Arch=x86_64 CoresPerSocket=32 RealMemory=257000 State=MIXED ThreadsPerCore=2 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=cpu BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=64,mem=257000M,billing=64 AllocTRES=cpu=38,mem=110000M',
+  'NodeName=cn03 Arch=x86_64 CoresPerSocket=32 RealMemory=257000 State=ALLOCATED ThreadsPerCore=2 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=cpu BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=64,mem=257000M,billing=64 AllocTRES=cpu=64,mem=220000M',
+  'NodeName=cn04 Arch=aarch64 CoresPerSocket=48 RealMemory=257000 State=IDLE ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=bigmem BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=96,mem=257000M,billing=96 AllocTRES=cpu=24,mem=70000M',
+  'NodeName=cn05 Arch=aarch64 CoresPerSocket=48 RealMemory=257000 State=DOWN+DRAIN ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=bigmem BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=96,mem=257000M,billing=96 AllocTRES=cpu=0,mem=0M',
+].join('\n');
 
 function demoNextTick() {
   _demoTick++;
@@ -2177,6 +2657,7 @@ function populateJobModal(job) {
 
   // Disable cancel if job isn't running/pending
   const cancelBtn = $('modal-btn-cancel');
+  cancelBtn.textContent = '❌ CANCEL';
   const canCancel = ['RUNNING', 'PENDING', 'SUSPENDED'].includes(job.state);
   cancelBtn.disabled = !canCancel;
   if (canCancel) {
@@ -2251,6 +2732,10 @@ fetchQueue();
 setupRowClickHandlers();
 setupQueueSorting();
 setupInfoSorting();
+setupGpuSorting();
+setupGpuTypeBreakdown();
+setupCpuSorting();
+setupCpuTypeBreakdown();
 setupHistorySorting();
 startRefreshCycle();
 $('cfg-sounds').checked = cfg.sounds;
