@@ -2461,21 +2461,23 @@ function renderUsersPanel(jobs) {
     return;
   }
 
-  // Group by user
+  // Group by user and precompute sort stats
   const byUser = {};
   for (const j of filtered) {
-    if (!byUser[j.user]) byUser[j.user] = [];
-    byUser[j.user].push(j);
+    if (!byUser[j.user]) byUser[j.user] = { jobs: [], running: 0, total: 0 };
+    byUser[j.user].jobs.push(j);
+    byUser[j.user].total++;
+    if (j.state === 'RUNNING') byUser[j.user].running++;
   }
 
-  // Sort users by total job count desc, then name
-  const sortedUsers = Object.entries(byUser).sort(([ua, ja], [ub, jb]) => {
-    const runDiff = jb.filter(j => j.state === 'RUNNING').length - ja.filter(j => j.state === 'RUNNING').length;
+  // Sort users by running job count desc, then total job count desc, then name
+  const sortedUsers = Object.entries(byUser).sort(([ua, a], [ub, b]) => {
+    const runDiff = b.running - a.running;
     if (runDiff !== 0) return runDiff;
-    return jb.length - ja.length || ua.localeCompare(ub);
+    return b.total - a.total || ua.localeCompare(ub);
   });
 
-  const html = sortedUsers.map(([user, userJobs]) => {
+  const html = sortedUsers.map(([user, { jobs: userJobs }]) => {
     const isUserExpanded = !!usersExpanded[user];
     const uRunning = userJobs.filter(j => j.state === 'RUNNING').length;
     const uPending = userJobs.filter(j => j.state === 'PENDING').length;
