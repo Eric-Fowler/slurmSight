@@ -715,8 +715,11 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
   min-width:160px;
 }
 .users-search:focus{border-color:var(--primary);box-shadow:var(--glow-primary)}
+.users-tree-outer{
+  flex:1;min-height:0;overflow:hidden;border-radius:var(--radius);
+}
 .users-tree{
-  display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;min-height:0;
+  display:flex;flex-direction:column;gap:6px;overflow-y:auto;height:100%;
 }
 .users-tree::-webkit-scrollbar{width:6px}
 .users-tree::-webkit-scrollbar-track{background:transparent}
@@ -1087,10 +1090,12 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
         <div id="users-partition-chips" class="users-partition-chips"></div>
         <input type="text" id="users-search" class="users-search" placeholder="Search user or job…" aria-label="Search users and jobs"/>
       </div>
-      <div id="users-tree" class="users-tree">
-        <div class="empty-state">
-          <div class="empty-icon">👥</div>
-          <div>Click Refresh to load queue data.</div>
+      <div class="users-tree-outer">
+        <div id="users-tree" class="users-tree">
+          <div class="empty-state">
+            <div class="empty-icon">👥</div>
+            <div>Click Refresh to load queue data.</div>
+          </div>
         </div>
       </div>
     </div>
