@@ -736,6 +736,7 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
   cursor:pointer;user-select:none;transition:background .2s;
 }
 .user-group-hdr:hover{background:rgba(0,229,255,.05)}
+.user-group-hdr:focus-visible{outline:2px solid var(--primary);outline-offset:-2px;}
 .user-expand-arrow{
   font-size:11px;color:var(--text-dim);width:14px;transition:transform .25s;flex-shrink:0;
 }
@@ -767,6 +768,7 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
   background:rgba(0,0,0,.15);
 }
 .job-name-group-hdr:hover{background:rgba(0,229,255,.04)}
+.job-name-group-hdr:focus-visible{outline:2px solid var(--primary);outline-offset:-2px;}
 .job-name-expand-arrow{
   font-size:10px;color:var(--text-dimmer);width:12px;transition:transform .25s;flex-shrink:0;
 }
@@ -2462,7 +2464,7 @@ function renderUsersPanel(jobs) {
   }
 
   // Group by user and precompute sort stats
-  const byUser = {};
+  const byUser = Object.create(null);
   for (const j of filtered) {
     if (!byUser[j.user]) byUser[j.user] = { jobs: [], running: 0, total: 0 };
     byUser[j.user].jobs.push(j);
@@ -2496,7 +2498,7 @@ function renderUsersPanel(jobs) {
     ].filter(Boolean).join('');
 
     // Group by job name under this user
-    const byName = {};
+    const byName = Object.create(null);
     for (const j of userJobs) {
       if (!byName[j.name]) byName[j.name] = [];
       byName[j.name].push(j);
@@ -2544,7 +2546,7 @@ function renderUsersPanel(jobs) {
       }).join('');
 
       return `<div class="job-name-group${isNameExpanded ? ' expanded' : ''}" data-user="${esc(user)}" data-name="${esc(name)}">
-        <div class="job-name-group-hdr">
+        <div class="job-name-group-hdr" role="button" tabindex="0" aria-expanded="${isNameExpanded}">
           <span class="job-name-expand-arrow">▶</span>
           <span class="job-name-label">${esc(name)}</span>
           <span class="job-name-chips">${nameChips}</span>
@@ -2563,7 +2565,7 @@ function renderUsersPanel(jobs) {
     }).join('');
 
     return `<div class="user-group${isUserExpanded ? ' expanded' : ''}" data-user="${esc(user)}">
-      <div class="user-group-hdr">
+      <div class="user-group-hdr" role="button" tabindex="0" aria-expanded="${isUserExpanded}">
         <span class="user-expand-arrow">▶</span>
         <span class="user-name-label">${esc(user)}</span>
         <span class="user-summary-chips">${chips}</span>
@@ -2574,25 +2576,39 @@ function renderUsersPanel(jobs) {
 
   tree.innerHTML = html;
 
-  // Wire up click handlers for user groups
+  // Wire up click/keyboard handlers for user groups
   tree.querySelectorAll('.user-group-hdr').forEach(hdr => {
-    hdr.addEventListener('click', () => {
+    const toggle = () => {
       const group = hdr.closest('.user-group');
       const user = group.dataset.user;
       usersExpanded[user] = !usersExpanded[user];
       group.classList.toggle('expanded', usersExpanded[user]);
+      hdr.setAttribute('aria-expanded', usersExpanded[user]);
+    };
+    hdr.addEventListener('click', toggle);
+    hdr.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      toggle();
     });
   });
 
-  // Wire up click handlers for job-name groups
+  // Wire up click/keyboard handlers for job-name groups
   tree.querySelectorAll('.job-name-group-hdr').forEach(hdr => {
-    hdr.addEventListener('click', () => {
+    const toggle = () => {
       const group = hdr.closest('.job-name-group');
       const user = group.dataset.user;
       const name = group.dataset.name;
       const key = user + '\0' + name;
       usersJobNameExpanded[key] = !usersJobNameExpanded[key];
       group.classList.toggle('expanded', usersJobNameExpanded[key]);
+      hdr.setAttribute('aria-expanded', usersJobNameExpanded[key]);
+    };
+    hdr.addEventListener('click', toggle);
+    hdr.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      toggle();
     });
   });
 }
