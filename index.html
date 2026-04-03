@@ -2402,15 +2402,27 @@ function renderUsersPartitionChips(jobs) {
   const chipContainer = $('users-partition-chips');
   if (!chipContainer) return;
   const partitions = ['ALL', ...new Set(jobs.map(j => j.partition).filter(Boolean).sort())];
-  chipContainer.innerHTML = partitions.map(p => `
-    <button class="gpu-type-chip${usersPartitionFilter === p ? ' active' : ''}" data-part="${esc(p)}">
-      ${esc(p)}${p !== 'ALL' ? `<span class="counts">${jobs.filter(j => j.partition === p).length}</span>` : ''}
-    </button>`).join('');
-  chipContainer.querySelectorAll('.gpu-type-chip').forEach(chip => {
+  chipContainer.textContent = '';
+
+  partitions.forEach(p => {
+    const chip = document.createElement('button');
+    chip.className = `gpu-type-chip${usersPartitionFilter === p ? ' active' : ''}`;
+    chip.dataset.part = p;
+    chip.appendChild(document.createTextNode(p));
+
+    if (p !== 'ALL') {
+      const count = document.createElement('span');
+      count.className = 'counts';
+      count.textContent = jobs.filter(j => j.partition === p).length;
+      chip.appendChild(count);
+    }
+
     chip.addEventListener('click', () => {
       usersPartitionFilter = chip.dataset.part;
       renderUsersPanel(usersRows);
     });
+
+    chipContainer.appendChild(chip);
   });
 }
 
