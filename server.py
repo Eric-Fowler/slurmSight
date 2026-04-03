@@ -41,6 +41,10 @@ ROUTES = {
         "squeue", "--me", "--noheader",
         "--format=%i\t%j\t%P\t%T\t%M\t%l\t%D\t%C\t%m\t%N\t%r\t%Q\t%S",
     ]),
+    "/api/squeueall": lambda: run_slurm([
+        "squeue", "--all", "--noheader",
+        "--format=%i\t%j\t%P\t%T\t%M\t%l\t%D\t%C\t%m\t%N\t%r\t%Q\t%S\t%u",
+    ]),
     "/api/sshare": lambda: run_slurm(["sshare", "-U"]),
     "/api/sinfo": lambda: run_slurm([
         "sinfo", "--noheader",
