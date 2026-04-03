@@ -22,6 +22,10 @@ except ValueError:
     sys.exit(1)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# All-users queue view is opt-in only to protect user privacy.
+# Set the SLURMSIGHT_ALL_USERS=1 environment variable to enable /api/squeueall.
+ENABLE_ALL_USERS = os.environ.get("SLURMSIGHT_ALL_USERS", "0").strip().lower() in ("1", "true", "yes")
+
 
 def run_slurm(cmd, timeout=20):
     """Run a Slurm command and return a structured result dict."""
@@ -62,14 +66,25 @@ def cancel_job(jobid):
 
 class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
 
-    def _send_json(self, data, status=200):
+    def _send_json(self, data, status=200, allow_origin="*"):
         body = json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", allow_origin)
         self.end_headers()
         self.wfile.write(body)
+
+    def _localhost_origin(self):
+        """Return the request's Origin if it is a localhost origin, else fall back to null."""
+        origin = self.headers.get("Origin", "")
+        localhost_hosts = {"localhost", "127.0.0.1", "::1"}
+        try:
+            if urlparse(origin).hostname in localhost_hosts:
+                return origin
+        except Exception:
+            pass
+        return "null"
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -99,6 +114,21 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
 
         if path in ROUTES:
             self._send_json(ROUTES[path]())
+        elif path == "/api/squeueall":
+            if not ENABLE_ALL_USERS:
+                self._send_json(
+                    {"ok": False, "err": "All-users queue view is disabled. "
+                     "Set SLURMSIGHT_ALL_USERS=1 to enable."},
+                    status=403,
+                    allow_origin=self._localhost_origin(),
+                )
+                return
+            result = run_slurm([
+                "squeue", "--all", "--noheader",
+                "--format=%i\t%j\t%P\t%T\t%M\t%l\t%D\t%C\t%m\t%N\t%r\t%Q\t%S\t%u",
+            ], timeout=60)
+            # Restrict CORS to localhost only — this endpoint reveals all users' data
+            self._send_json(result, allow_origin=self._localhost_origin())
         else:
             self._send_json({"error": "Not found"}, 404)
 

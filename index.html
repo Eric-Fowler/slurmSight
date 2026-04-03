@@ -693,6 +693,113 @@ tbody tr[data-jid]{cursor:pointer}
 tbody tr[data-jid]:hover{background:rgba(0,229,255,.08) !important}
 tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
 
+/* ─────────────────────────────────────────────
+   Users Panel
+───────────────────────────────────────────── */
+.users-toolbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px;
+  padding:12px 14px;border-radius:var(--radius);
+  background:var(--surf);border:1px solid var(--border);
+}
+.users-toolbar-label{
+  font-size:10px;letter-spacing:2px;color:var(--text-dim);
+  font-family:var(--font-mono);flex-shrink:0;
+}
+.users-partition-chips{
+  display:flex;flex-wrap:wrap;gap:6px;flex:1;
+}
+.users-search{
+  padding:7px 10px;border-radius:8px;background:var(--bg2);
+  color:var(--text);border:1px solid var(--border);
+  font-family:var(--font-mono);font-size:12px;outline:none;
+  min-width:160px;
+}
+.users-search:focus{border-color:var(--primary);box-shadow:var(--glow-primary)}
+.users-tree-outer{
+  flex:1;min-height:0;overflow:hidden;border-radius:var(--radius);
+}
+.users-tree{
+  display:flex;flex-direction:column;gap:6px;overflow-y:auto;height:100%;
+}
+.users-tree::-webkit-scrollbar{width:6px}
+.users-tree::-webkit-scrollbar-track{background:transparent}
+.users-tree::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+.user-group{
+  border-radius:var(--radius);background:var(--surf);
+  border:1px solid var(--border);overflow:hidden;
+  transition:border-color .2s;flex-shrink:0;
+}
+.user-group:hover{border-color:var(--border2)}
+.user-group.expanded{border-color:var(--primary)}
+.user-group-hdr{
+  display:flex;align-items:center;gap:12px;padding:11px 16px;
+  cursor:pointer;user-select:none;transition:background .2s;
+}
+.user-group-hdr:hover{background:rgba(0,229,255,.05)}
+.user-group-hdr:focus-visible{outline:2px solid var(--primary);outline-offset:-2px;}
+.user-expand-arrow{
+  font-size:11px;color:var(--text-dim);width:14px;transition:transform .25s;flex-shrink:0;
+}
+.user-group.expanded .user-expand-arrow{transform:rotate(90deg)}
+.user-name-label{
+  font-family:var(--font-mono);font-size:13px;font-weight:700;
+  color:var(--primary);min-width:120px;
+}
+.user-summary-chips{display:flex;flex-wrap:wrap;gap:6px;margin-left:4px;align-items:center;}
+.user-chip{
+  padding:2px 8px;border-radius:10px;font-family:var(--font-mono);font-size:10px;
+  letter-spacing:.5px;border:1px solid;white-space:nowrap;
+}
+.user-chip.running{background:var(--success-dim);color:var(--success);border-color:var(--success)}
+.user-chip.pending{background:var(--warn-dim);color:var(--warn);border-color:var(--warn)}
+.user-chip.other{background:var(--surf2);color:var(--text-dim);border-color:var(--border)}
+.user-chip.cpus{background:var(--primary-dim);color:var(--primary);border-color:var(--primary)}
+.user-chip.nodes{background:var(--purple-dim);color:var(--purple);border-color:var(--purple)}
+.user-chip.parts{background:rgba(255,149,0,.15);color:var(--orange);border-color:var(--orange)}
+.user-group-body{display:none;border-top:1px solid var(--border);}
+.user-group.expanded .user-group-body{display:block;}
+.job-name-group{
+  border-bottom:1px solid rgba(80,180,255,.07);
+}
+.job-name-group:last-child{border-bottom:none;}
+.job-name-group-hdr{
+  display:flex;align-items:center;gap:10px;padding:9px 16px 9px 32px;
+  cursor:pointer;user-select:none;transition:background .2s;
+  background:rgba(0,0,0,.15);
+}
+.job-name-group-hdr:hover{background:rgba(0,229,255,.04)}
+.job-name-group-hdr:focus-visible{outline:2px solid var(--primary);outline-offset:-2px;}
+.job-name-expand-arrow{
+  font-size:10px;color:var(--text-dimmer);width:12px;transition:transform .25s;flex-shrink:0;
+}
+.job-name-group.expanded .job-name-expand-arrow{transform:rotate(90deg)}
+.job-name-label{
+  font-family:var(--font-mono);font-size:12px;color:var(--text);min-width:160px;
+}
+.job-name-chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
+.job-name-group-body{
+  display:none;
+  background:rgba(0,0,0,.12);
+}
+.job-name-group.expanded .job-name-group-body{display:block;}
+.users-jobs-table{
+  width:100%;border-collapse:collapse;
+  font-family:var(--font-mono);font-size:11px;
+}
+.users-jobs-table th{
+  padding:6px 10px 6px 48px;text-align:left;
+  font-size:9px;letter-spacing:2px;color:var(--text-dimmer);
+  border-bottom:1px solid var(--border);white-space:nowrap;
+}
+.users-jobs-table th:first-child{padding-left:48px}
+.users-jobs-table td{
+  padding:7px 10px 7px 48px;border-bottom:1px solid rgba(80,180,255,.04);
+  vertical-align:middle;white-space:nowrap;color:var(--text-dim);
+}
+.users-jobs-table td:first-child{padding-left:48px}
+.users-jobs-table tr:last-child td{border-bottom:none;}
+.users-jobs-table tr:hover td{background:rgba(0,229,255,.04);color:var(--text);}
+
 </style>
 </head>
 <body>
@@ -726,6 +833,7 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
     <button class="tab" data-panel="gpu">🎮 GPU NODES</button>
     <button class="tab" data-panel="cpu">🧠 CPU NODES</button>
     <button class="tab" data-panel="history">📜 HISTORY</button>
+    <button class="tab" data-panel="users">👥 USERS</button>
     <button class="tab" data-panel="settings">⚙ CONFIG</button>
   </nav>
 
@@ -965,6 +1073,35 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
       </div>
     </div>
 
+    <!-- ── Users Panel ── -->
+    <div id="panel-users" class="panel">
+      <div class="panel-hdr">
+        <h2>SQUEUE — ALL USERS</h2>
+        <div class="panel-hdr-right">
+          <button class="btn-sm" id="btn-refresh-users">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card total">  <div class="stat-value" id="users-stat-users">0</div>  <div class="stat-label">USERS</div></div>
+        <div class="stat-card running"><div class="stat-value" id="users-stat-running">0</div><div class="stat-label">RUNNING</div></div>
+        <div class="stat-card pending"><div class="stat-value" id="users-stat-pending">0</div><div class="stat-label">PENDING</div></div>
+        <div class="stat-card other">  <div class="stat-value" id="users-stat-total">0</div>  <div class="stat-label">TOTAL JOBS</div></div>
+      </div>
+      <div class="users-toolbar">
+        <span class="users-toolbar-label">PARTITION</span>
+        <div id="users-partition-chips" class="users-partition-chips"></div>
+        <input type="text" id="users-search" class="users-search" placeholder="Search user or job…" aria-label="Search users and jobs"/>
+      </div>
+      <div class="users-tree-outer">
+        <div id="users-tree" class="users-tree">
+          <div class="empty-state">
+            <div class="empty-icon">👥</div>
+            <div>Click Refresh to load queue data.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Settings Panel ── -->
     <div id="panel-settings" class="panel">
       <div class="panel-hdr"><h2>CONFIGURATION</h2></div>
@@ -1133,6 +1270,11 @@ let shareSort = { key: 'fairShare', direction: 'desc' };
 let shareFilter = '';
 let historyRows = [];
 let historySort = { key: 'jobid', direction: 'desc', type: 'number' };
+let usersRows = [];
+let usersPartitionFilter = 'ALL';
+let usersSearch = '';
+let usersExpanded = {};        // username → bool
+let usersJobNameExpanded = {}; // "user\0name" → bool
 
 // ─────────────────────────────────────────
 // Helpers
@@ -2245,8 +2387,257 @@ function setupCpuSorting() {
 }
 
 // ─────────────────────────────────────────
-// Tabs
+// Users Queue (squeue --all grouped by user)
 // ─────────────────────────────────────────
+function parseUsersQueue(raw) {
+  return raw.trim().split('\n')
+    .filter(l => l.trim())
+    .map(line => {
+      const parts = line.split('\t');
+      const [jobid,name,partition,state,elapsed,timelimit,nodes,cpus,mem,nodelist,reason,priority,start] = parts;
+      const user = (parts[13] || 'unknown').trim();
+      return {jobid,name,partition,state,elapsed,timelimit,nodes,cpus,mem,nodelist,reason,priority,start,user};
+    });
+}
+
+function renderUsersPartitionChips(jobs) {
+  const chipContainer = $('users-partition-chips');
+  if (!chipContainer) return;
+  const partitionCounts = Object.create(null);
+  for (const job of jobs) {
+    if (job.partition) partitionCounts[job.partition] = (partitionCounts[job.partition] || 0) + 1;
+  }
+  const partitions = ['ALL', ...new Set(jobs.map(j => j.partition).filter(Boolean).sort())];
+  chipContainer.textContent = '';
+
+  partitions.forEach(p => {
+    const chip = document.createElement('button');
+    chip.className = `gpu-type-chip${usersPartitionFilter === p ? ' active' : ''}`;
+    chip.dataset.part = p;
+    chip.appendChild(document.createTextNode(p));
+
+    if (p !== 'ALL') {
+      const count = document.createElement('span');
+      count.className = 'counts';
+      count.textContent = partitionCounts[p] || 0;
+      chip.appendChild(count);
+    }
+
+    chip.addEventListener('click', () => {
+      usersPartitionFilter = chip.dataset.part;
+      renderUsersPanel(usersRows);
+    });
+
+    chipContainer.appendChild(chip);
+  });
+}
+
+function renderUsersPanel(jobs) {
+  usersRows = jobs;
+  const tree = $('users-tree');
+  if (!tree) return;
+
+  // Render partition chips
+  renderUsersPartitionChips(jobs);
+
+  // Apply filters
+  const needle = usersSearch.trim().toLowerCase();
+  let filtered = jobs;
+  if (usersPartitionFilter !== 'ALL') {
+    filtered = filtered.filter(j => j.partition === usersPartitionFilter);
+  }
+  if (needle) {
+    filtered = filtered.filter(j =>
+      (j.user || '').toLowerCase().includes(needle) ||
+      (j.name || '').toLowerCase().includes(needle)
+    );
+  }
+
+  // Update stats
+  const uniqueUsers = new Set(filtered.map(j => j.user)).size;
+  const running = filtered.filter(j => j.state === 'RUNNING').length;
+  const pending = filtered.filter(j => j.state === 'PENDING').length;
+  animNum('users-stat-users', uniqueUsers);
+  animNum('users-stat-running', running);
+  animNum('users-stat-pending', pending);
+  animNum('users-stat-total', filtered.length);
+
+  if (!filtered.length) {
+    tree.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><div>${needle || usersPartitionFilter !== 'ALL' ? 'No jobs match the current filter.' : 'No active jobs in queue.'}</div></div>`;
+    return;
+  }
+
+  // Group by user and precompute sort stats
+  const byUser = Object.create(null);
+  for (const j of filtered) {
+    if (!byUser[j.user]) byUser[j.user] = { jobs: [], running: 0, total: 0 };
+    byUser[j.user].jobs.push(j);
+    byUser[j.user].total++;
+    if (j.state === 'RUNNING') byUser[j.user].running++;
+  }
+
+  // Sort users by running job count desc, then total job count desc, then name
+  const sortedUsers = Object.entries(byUser).sort(([ua, a], [ub, b]) => {
+    const runDiff = b.running - a.running;
+    if (runDiff !== 0) return runDiff;
+    return b.total - a.total || ua.localeCompare(ub);
+  });
+
+  const html = sortedUsers.map(([user, { jobs: userJobs }]) => {
+    const isUserExpanded = !!usersExpanded[user];
+    const uRunning = userJobs.filter(j => j.state === 'RUNNING').length;
+    const uPending = userJobs.filter(j => j.state === 'PENDING').length;
+    const uOther   = userJobs.length - uRunning - uPending;
+    const uCpus    = userJobs.reduce((s, j) => s + (parseInt(j.cpus) || 0), 0);
+    const uNodes   = userJobs.reduce((s, j) => s + (parseInt(j.nodes) || 0), 0);
+    const uParts   = [...new Set(userJobs.map(j => j.partition))].join(', ');
+
+    const chips = [
+      uRunning ? `<span class="user-chip running">▶ ${uRunning} running</span>` : '',
+      uPending ? `<span class="user-chip pending">⏳ ${uPending} pending</span>` : '',
+      uOther   ? `<span class="user-chip other">◉ ${uOther} other</span>` : '',
+      `<span class="user-chip cpus">⚙ ${uCpus} CPUs</span>`,
+      `<span class="user-chip nodes">🖧 ${uNodes} nodes</span>`,
+      `<span class="user-chip parts">${esc(uParts)}</span>`,
+    ].filter(Boolean).join('');
+
+    // Group by job name under this user
+    const byName = Object.create(null);
+    for (const j of userJobs) {
+      if (!byName[j.name]) byName[j.name] = [];
+      byName[j.name].push(j);
+    }
+    const sortedNames = Object.entries(byName).sort(([na, ja], [nb, jb]) => {
+      return jb.filter(j => j.state === 'RUNNING').length - ja.filter(j => j.state === 'RUNNING').length
+          || jb.length - ja.length || na.localeCompare(nb);
+    });
+
+    const nameGroupsHtml = sortedNames.map(([name, nameJobs]) => {
+      const key = user + '\0' + name;
+      const isNameExpanded = !!usersJobNameExpanded[key];
+      const nRunning = nameJobs.filter(j => j.state === 'RUNNING').length;
+      const nPending = nameJobs.filter(j => j.state === 'PENDING').length;
+      const nOther   = nameJobs.length - nRunning - nPending;
+      const nCpus    = nameJobs.reduce((s, j) => s + (parseInt(j.cpus) || 0), 0);
+      const nNodes   = nameJobs.reduce((s, j) => s + (parseInt(j.nodes) || 0), 0);
+
+      const nameChips = [
+        nRunning ? `<span class="user-chip running">▶ ${nRunning}</span>` : '',
+        nPending ? `<span class="user-chip pending">⏳ ${nPending}</span>` : '',
+        nOther   ? `<span class="user-chip other">◉ ${nOther}</span>` : '',
+        `<span class="user-chip cpus">⚙ ${nCpus}</span>`,
+        `<span class="user-chip nodes">🖧 ${nNodes}</span>`,
+      ].filter(Boolean).join('');
+
+      const jobRows = nameJobs.map(j => {
+        const priority = parseFloat(j.priority) || 0;
+        const prioClass = priority > 0.9 ? 'high' : priority < 0.5 ? 'low' : '';
+        const prioLabel = j.priority && j.priority !== 'N/A' && j.priority !== '0'
+          ? `<span class="priority-chip ${prioClass}">${esc(j.priority)}</span>` : '';
+        const reasonOrPrio = (j.reason && j.reason !== 'None') ? esc(j.reason) : prioLabel;
+        return `<tr>
+          <td>${esc(j.jobid)}</td>
+          <td>${esc(j.partition)}</td>
+          <td>${stateBadge(j.state)}</td>
+          <td>${esc(j.elapsed)}</td>
+          <td>${esc(j.timelimit)}</td>
+          <td>${esc(j.nodes)}</td>
+          <td>${esc(j.cpus)}</td>
+          <td>${esc(j.mem)}</td>
+          <td title="${esc(j.nodelist)}">${esc(j.nodelist && j.nodelist !== 'N/A' ? j.nodelist.slice(0,24) : j.nodelist)}</td>
+          <td>${reasonOrPrio}</td>
+        </tr>`;
+      }).join('');
+
+      return `<div class="job-name-group${isNameExpanded ? ' expanded' : ''}" data-user="${esc(user)}" data-name="${esc(name)}">
+        <div class="job-name-group-hdr" role="button" tabindex="0" aria-expanded="${isNameExpanded}">
+          <span class="job-name-expand-arrow">▶</span>
+          <span class="job-name-label">${esc(name)}</span>
+          <span class="job-name-chips">${nameChips}</span>
+        </div>
+        <div class="job-name-group-body">
+          <table class="users-jobs-table">
+            <thead><tr>
+              <th>JOB ID</th><th>PARTITION</th><th>STATE</th><th>ELAPSED</th>
+              <th>LIMIT</th><th>NODES</th><th>CPUS</th><th>MEM</th>
+              <th>NODELIST</th><th>REASON / PRIORITY</th>
+            </tr></thead>
+            <tbody>${jobRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="user-group${isUserExpanded ? ' expanded' : ''}" data-user="${esc(user)}">
+      <div class="user-group-hdr" role="button" tabindex="0" aria-expanded="${isUserExpanded}">
+        <span class="user-expand-arrow">▶</span>
+        <span class="user-name-label">${esc(user)}</span>
+        <span class="user-summary-chips">${chips}</span>
+      </div>
+      <div class="user-group-body">${nameGroupsHtml}</div>
+    </div>`;
+  }).join('');
+
+  tree.innerHTML = html;
+
+  // Wire up click/keyboard handlers for user groups
+  tree.querySelectorAll('.user-group-hdr').forEach(hdr => {
+    const toggle = () => {
+      const group = hdr.closest('.user-group');
+      const user = group.dataset.user;
+      usersExpanded[user] = !usersExpanded[user];
+      group.classList.toggle('expanded', usersExpanded[user]);
+      hdr.setAttribute('aria-expanded', usersExpanded[user]);
+    };
+    hdr.addEventListener('click', toggle);
+    hdr.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      toggle();
+    });
+  });
+
+  // Wire up click/keyboard handlers for job-name groups
+  tree.querySelectorAll('.job-name-group-hdr').forEach(hdr => {
+    const toggle = () => {
+      const group = hdr.closest('.job-name-group');
+      const user = group.dataset.user;
+      const name = group.dataset.name;
+      const key = user + '\0' + name;
+      usersJobNameExpanded[key] = !usersJobNameExpanded[key];
+      group.classList.toggle('expanded', usersJobNameExpanded[key]);
+      hdr.setAttribute('aria-expanded', usersJobNameExpanded[key]);
+    };
+    hdr.addEventListener('click', toggle);
+    hdr.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      toggle();
+    });
+  });
+}
+
+async function fetchUsersQueue() {
+  const tree = $('users-tree');
+  if (tree) tree.innerHTML = `<div class="empty-state"><span class="spinner"></span> Loading…</div>`;
+  if (cfg.demoMode) {
+    renderUsersPanel(parseUsersQueue(DEMO_SQUEUE_USERS));
+    return;
+  }
+  try {
+    const r = await fetch(cfg.serverUrl + '/api/squeueall', {signal: AbortSignal.timeout(10000)});
+    const data = await r.json();
+    if (!data.ok) {
+      if (tree) tree.innerHTML = `<div class="empty-state" style="color:var(--danger)">${esc(data.err || 'squeue error')}</div>`;
+      return;
+    }
+    renderUsersPanel(parseUsersQueue(data.out || ''));
+  } catch(e) {
+    if (tree) tree.innerHTML = `<div class="empty-state" style="color:var(--danger)">${esc(e.message)}</div>`;
+  }
+}
+
+
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
@@ -2260,6 +2651,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (btn.dataset.panel === 'gpu') fetchGpuNodes();
     if (btn.dataset.panel === 'cpu') fetchCpuNodes();
     if (btn.dataset.panel === 'history') fetchHistory();
+    if (btn.dataset.panel === 'users') fetchUsersQueue();
   });
 });
 
@@ -2272,6 +2664,11 @@ $('btn-refresh-info').onclick = fetchInfo;
 $('btn-refresh-gpu').onclick = fetchGpuNodes;
 $('btn-refresh-cpu').onclick = fetchCpuNodes;
 $('btn-refresh-history').onclick = fetchHistory;
+$('btn-refresh-users').onclick = fetchUsersQueue;
+$('users-search').oninput = function() {
+  usersSearch = this.value;
+  renderUsersPanel(usersRows);
+};
 $('share-filter').oninput = function() {
   shareFilter = this.value;
   if (shareRaw) renderShareCards(shareRaw);
@@ -2384,6 +2781,24 @@ const DEMO_CPU_NODES = [
   'NodeName=cn03 Arch=x86_64 CoresPerSocket=32 RealMemory=257000 State=ALLOCATED ThreadsPerCore=2 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=cpu BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=64,mem=257000M,billing=64 AllocTRES=cpu=64,mem=220000M',
   'NodeName=cn04 Arch=aarch64 CoresPerSocket=48 RealMemory=257000 State=IDLE ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=bigmem BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=96,mem=257000M,billing=96 AllocTRES=cpu=24,mem=70000M',
   'NodeName=cn05 Arch=aarch64 CoresPerSocket=48 RealMemory=257000 State=DOWN+DRAIN ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A Partitions=bigmem BootTime=2026-03-20T01:01:01 SlurmdStartTime=2026-03-20T01:03:00 CfgTRES=cpu=96,mem=257000M,billing=96 AllocTRES=cpu=0,mem=0M',
+].join('\n');
+
+// Demo data: squeue --all with user field (%u appended as last column)
+const DEMO_SQUEUE_USERS = [
+  '112001\ttrain_v3\tgpu\tRUNNING\t03:12:44\t8:00:00\t2\t32\t64G\tgpu[01-02]\tNone\t0.998\t2024-01-15T09:00:00\talice',
+  '112002\ttrain_v3\tgpu\tRUNNING\t01:05:12\t8:00:00\t1\t16\t32G\tgpu03\tNone\t0.997\t2024-01-15T11:00:00\talice',
+  '112003\tfinetune\tgpu\tPENDING\t0:00:00\t4:00:00\t4\t64\t128G\tN/A\tResources\t0.921\tN/A\talice',
+  '112004\teval_run\tcpu\tRUNNING\t00:45:00\t2:00:00\t1\t8\t16G\tcn42\tNone\t0.975\t2024-01-15T12:00:00\talice',
+  '112010\tdata_proc\tcpu\tRUNNING\t02:10:00\t6:00:00\t2\t16\t32G\tcn[10-11]\tNone\t0.960\t2024-01-15T10:00:00\tbob',
+  '112011\tdata_proc\tcpu\tPENDING\t0:00:00\t6:00:00\t2\t16\t32G\tN/A\tPriority\t0.850\tN/A\tbob',
+  '112012\tsweep_001\tgpu\tRUNNING\t00:30:00\t12:00:00\t4\t64\t128G\tgpu[01-04]\tNone\t0.990\t2024-01-15T12:30:00\tbob',
+  '112020\tbaseline\tcpu\tRUNNING\t00:12:00\t1:00:00\t1\t4\t8G\tcn05\tNone\t0.880\t2024-01-15T12:48:00\tcarol',
+  '112021\tbaseline\tcpu\tPENDING\t0:00:00\t1:00:00\t1\t4\t8G\tN/A\tResources\t0.875\tN/A\tcarol',
+  '112022\tpreprocess\tbigmem\tRUNNING\t01:00:00\t4:00:00\t1\t32\t256G\tbm01\tNone\t0.920\t2024-01-15T12:00:00\tcarol',
+  '112023\tpreprocess\tbigmem\tRUNNING\t00:45:00\t4:00:00\t1\t32\t256G\tbm02\tNone\t0.918\t2024-01-15T12:15:00\tcarol',
+  '112030\tbatch_inf\tgpu\tRUNNING\t04:00:00\t8:00:00\t2\t32\t64G\tgpu[05-06]\tNone\t0.970\t2024-01-15T09:00:00\tdavid',
+  '112031\tbatch_inf\tgpu\tPENDING\t0:00:00\t8:00:00\t2\t32\t64G\tN/A\tResources\t0.965\tN/A\tdavid',
+  '112032\tfeature_eng\tcpu\tPENDING\t0:00:00\t3:00:00\t1\t8\t16G\tN/A\tPriority\t0.800\tN/A\tdavid',
 ].join('\n');
 
 function demoNextTick() {
