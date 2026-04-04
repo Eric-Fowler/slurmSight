@@ -324,10 +324,6 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
         auth_header = self.headers.get("Authorization", "")
         if auth_header.startswith("Bearer ") and auth_header[7:] == token:
             return True
-        # Fallback: ?token= query param (for browser direct-open convenience)
-        for part in urlparse(self.path).query.split("&"):
-            if part.startswith("token=") and part[6:] == token:
-                return True
         return False
 
     def do_OPTIONS(self):
