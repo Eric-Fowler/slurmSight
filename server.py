@@ -392,7 +392,7 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
             }})
 
         else:
-            self._send_json({"error": "Not found"}, 404)
+            self._send_json({"ok": False, "err": "Not found"}, 404)
 
     def do_POST(self):
         path = urlparse(self.path).path
