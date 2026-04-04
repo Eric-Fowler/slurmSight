@@ -579,7 +579,7 @@ function renderQueue(jobs) {
         sendNotif('Job Completed', `${prev.name} (#${jid}) finished successfully`);
         sendWebhook('completed', prev);
       } else if (s === 'FAILED') {
-        toast(`Job ${jid} (${prev.name}) FAILED`, 'danger', '��', 6000);
+        toast(`Job ${jid} (${prev.name}) FAILED`, 'danger', '❌', 6000);
         playSound('failed');
         sendNotif('Job Failed', `${prev.name} (#${jid}) failed`);
         sendWebhook('failed', prev);
