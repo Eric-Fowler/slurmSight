@@ -22,6 +22,8 @@ let cfg = {
   authToken:      '',
 };
 try { Object.assign(cfg, JSON.parse(localStorage.getItem(CFG_KEY) || '{}')); } catch(_){}
+// Clamp refreshInterval to a safe range to prevent divide-by-zero in updateCountdownUI
+cfg.refreshInterval = Math.max(1, Math.min(3600, parseInt(cfg.refreshInterval, 10) || 5));
 
 // ─────────────────────────────────────────
 // Theme (persisted separately)
@@ -1690,7 +1692,7 @@ $('btn-live').onclick=()=>{cfg.demoMode=false;$('btn-live').classList.add('activ
 
 $('btn-save').onclick=()=>{
   cfg.serverUrl=$('cfg-server').value.trim()||'http://localhost:8787';
-  cfg.refreshInterval=parseInt($('cfg-refresh').value)||5;
+  cfg.refreshInterval=Math.max(1, Math.min(3600, parseInt($('cfg-refresh').value, 10) || 5));
   cfg.animations=$('cfg-anim').checked;
   cfg.sounds=$('cfg-sounds').checked;
   cfg.desktopNotif=($('cfg-notif')||{}).checked||false;
