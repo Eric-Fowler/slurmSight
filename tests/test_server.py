@@ -111,15 +111,30 @@ class TestHTTPServer(unittest.TestCase):
     def setUpClass(cls):
         srv_mod.CONFIG["auth_token"] = ""
         srv_mod.CONFIG["enable_submit"] = False
-        cls.port = 18787
-        cls.server = srv_mod.ReuseAddrHTTPServer(("127.0.0.1", cls.port), srv_mod.SlurmSightHandler)
+        cls.server = srv_mod.ReuseAddrHTTPServer(("127.0.0.1", 0), srv_mod.SlurmSightHandler)
+        cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
-        time.sleep(0.2)
+        deadline = time.time() + 5
+        last_exc = None
+        while time.time() < deadline:
+            conn = http.client.HTTPConnection("127.0.0.1", cls.port, timeout=0.5)
+            try:
+                conn.connect()
+                conn.close()
+                break
+            except OSError as exc:
+                last_exc = exc
+                conn.close()
+                time.sleep(0.05)
+        else:
+            raise last_exc or RuntimeError("Server did not become ready in time")
 
     @classmethod
     def tearDownClass(cls):
         cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join(timeout=5)
 
     def _get(self, path):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
