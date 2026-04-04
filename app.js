@@ -3,6 +3,11 @@
 ═══════════════════════════════════════════════════════ */
 
 // ─────────────────────────────────────────
+// DOM helpers  (must come first — used at module top-level)
+// ─────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+// ─────────────────────────────────────────
 // Config (persisted in localStorage)
 // ─────────────────────────────────────────
 const CFG_KEY = 'slurmSight_cfg';
@@ -115,11 +120,6 @@ let usersSearch  = '';
 let usersExpanded       = {};
 let usersJobNameExpanded = {};
 let serverCapabilities  = { enable_submit: false, enable_metrics: false };
-
-// ─────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────
-const $ = id => document.getElementById(id);
 
 // ─────────────────────────────────────────
 // Search filter helper
