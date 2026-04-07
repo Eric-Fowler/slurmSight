@@ -199,6 +199,22 @@ body{display:flex;flex-direction:column}
 .stat-value.bump{animation:stat-bump .35s cubic-bezier(.34,1.56,.64,1)}
 @keyframes stat-bump{0%{transform:scale(1.4)}100%{transform:scale(1)}}
 
+.partition-strip{
+  display:flex;flex-wrap:wrap;gap:8px;padding:10px 12px;border-radius:var(--radius);
+  background:var(--surf);border:1px solid var(--border);min-height:46px;
+}
+.partition-chip{
+  display:flex;flex-direction:column;gap:4px;min-width:120px;padding:8px 10px;border-radius:10px;
+  background:var(--bg2);border:1px solid var(--border);font-family:var(--font-mono);
+}
+.partition-chip-name{font-size:11px;color:var(--primary);letter-spacing:.8px;font-weight:700}
+.partition-chip-stats{display:flex;gap:8px;flex-wrap:wrap;font-size:10px;color:var(--text-dim)}
+.partition-chip-stats .run{color:var(--success)}
+.partition-chip-stats .pend{color:var(--warn)}
+.partition-chip-stats .other{color:var(--orange)}
+.partition-chip-stats .total{color:var(--text)}
+.partition-strip-empty{font-size:11px;color:var(--text-dimmer);font-family:var(--font-mono);display:flex;align-items:center}
+
 /* ─────────────────────────────────────────────
    GPU Type Breakdown
 ───────────────────────────────────────────── */

@@ -256,6 +256,39 @@ function computeQueueInsights(jobs) {
   return insights;
 }
 
+function summarizeQueuePartitions(jobs) {
+  const byPartition = {};
+  for (const job of jobs) {
+    const part = String(job.partition || 'unknown');
+    if (!byPartition[part]) byPartition[part] = { partition: part, running: 0, pending: 0, other: 0, total: 0 };
+    byPartition[part].total += 1;
+    if (job.state === 'RUNNING') byPartition[part].running += 1;
+    else if (job.state === 'PENDING') byPartition[part].pending += 1;
+    else byPartition[part].other += 1;
+  }
+  return Object.values(byPartition).sort((a, b) => b.total - a.total || a.partition.localeCompare(b.partition));
+}
+
+function renderQueuePartitions(jobs) {
+  const box = $('queue-partition-strip');
+  if (!box) return;
+  const parts = summarizeQueuePartitions(jobs);
+  if (!parts.length) {
+    box.innerHTML = '<div class="partition-strip-empty">No partition activity in the current queue.</div>';
+    return;
+  }
+  box.innerHTML = parts.map(part => `
+    <div class="partition-chip">
+      <div class="partition-chip-name">${esc(part.partition)}</div>
+      <div class="partition-chip-stats">
+        <span class="run">RUN ${esc(part.running)}</span>
+        <span class="pend">PEND ${esc(part.pending)}</span>
+        <span class="other">OTHER ${esc(part.other)}</span>
+        <span class="total">TOTAL ${esc(part.total)}</span>
+      </div>
+    </div>`).join('');
+}
+
 function encodeSortState(sortState) {
   return [sortState.key || '', sortState.direction || 'asc', sortState.type || 'string'].join(':');
 }
@@ -493,6 +526,17 @@ function formatRelativeTs(seconds) {
   const ts = Number(seconds) || 0;
   if (!ts) return 'N/A';
   return relTime(new Date(ts * 1000).toISOString());
+}
+
+function validateSubmitParams(values) {
+  if (!values.script) return 'Script path is required.';
+  if (!values.script.startsWith('/')) return 'Script path must be absolute.';
+  if (values.cores && (!/^\d+$/.test(values.cores) || Number(values.cores) < 1)) return 'Cores must be a positive integer.';
+  if (values.walltime && !/^(?:\d+-)?\d{1,2}:\d{2}(?::\d{2})?$/.test(values.walltime)) {
+    return 'Wall time must look like HH:MM, HH:MM:SS, or D-HH:MM:SS.';
+  }
+  if (values.mem && !Number.isFinite(parseMemoryToBytes(values.mem))) return 'Memory must look like 32G, 8000M, or 1T.';
+  return '';
 }
 
 function openRunsMetaArtifact(action) {
@@ -989,6 +1033,7 @@ function renderQueue(jobs) {
   animNum('hdr-pending', pending);
   animNum('hdr-other', other);
   animNum('hdr-total', jobs.length);
+  renderQueuePartitions(jobs);
 
   // Apply search filter
   const filter = buildFilter(queueSearch);
@@ -2237,7 +2282,16 @@ async function submitJob() {
   const result = $('submit-result');
   const params = getSubmitFormValues();
   const script = params.script;
-  if (!script.trim()) { toast('Script path is required', 'warn', '⚠️'); return; }
+  const validationError = validateSubmitParams(params);
+  if (validationError) {
+    if (result) {
+      result.style.display='';
+      result.className='submit-result err';
+      result.textContent=validationError;
+    }
+    toast(validationError, 'warn', '⚠️');
+    return;
+  }
   btn.disabled = true; btn.textContent = '⏳ SUBMITTING…';
   if (result) { result.style.display='none'; result.className='submit-result'; }
   if (cfg.demoMode) {
