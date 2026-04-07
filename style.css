@@ -906,6 +906,10 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
   min-height:420px;
   flex:1;
 }
+#panel-runs.viewer-expanded .runs-layout{grid-template-columns:1fr}
+#panel-runs.viewer-expanded .runs-col-summary,
+#panel-runs.viewer-expanded .runs-col-detail{display:none}
+#panel-runs.viewer-expanded .runs-col-viewer{min-height:calc(100vh - 220px)}
 .runs-col{
   border:1px solid var(--border);
   border-radius:var(--radius);
@@ -979,7 +983,7 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
 .runs-meta-k{display:block;font-size:9px;color:var(--text-dimmer);font-family:var(--font-mono);letter-spacing:1px}
 .runs-meta-v{display:block;font-size:11px;color:var(--text);font-family:var(--font-mono)}
 .runs-meta-empty{font-size:11px;color:var(--text-dimmer);font-family:var(--font-mono)}
-.runs-viewer-actions{padding:10px;display:flex;justify-content:flex-end}
+.runs-viewer-actions{padding:10px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .runs-current-file{
   padding:0 10px 8px;
   color:var(--text-dim);
@@ -1006,6 +1010,14 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
   white-space:pre-wrap;
   background:var(--bg2);
 }
+.runs-text-viewer .tok-key{color:#73d2ff}
+.runs-text-viewer .tok-str{color:#93f7c8}
+.runs-text-viewer .tok-num{color:#ffd479}
+.runs-text-viewer .tok-kw{color:#ff9bb6}
+.runs-text-viewer .tok-com{color:#8ca4bc;font-style:italic}
+.runs-text-viewer .tok-err{color:#ff6b7d;font-weight:700}
+.runs-text-viewer .tok-warn{color:#ffcc66;font-weight:700}
+.runs-text-viewer .tok-info{color:#7fc7ff;font-weight:700}
 
 /* ─────────────────────────────────────────────
    Submit Panel

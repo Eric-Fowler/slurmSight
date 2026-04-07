@@ -132,6 +132,7 @@ let selectedTextFile = '';
 let selectedGroupHtml = '';
 let selectedGroupText = '';
 let runsOpenMode = localStorage.getItem(RUNS_MODE_KEY) || 'embed';
+let runsViewerExpanded = false;
 let serverCapabilities  = { enable_submit: false, enable_metrics: false, enable_runs_browser: true };
 
 // ─────────────────────────────────────────
@@ -801,6 +802,53 @@ function setRunsCurrentFile(label) {
   if (el) el.textContent = label || 'No file selected';
 }
 
+function updateRunsExpandButton() {
+  const btn = $('btn-runs-expand');
+  if (!btn) return;
+  btn.textContent = runsViewerExpanded ? 'Collapse Viewer' : 'Expand Viewer';
+}
+
+function toggleRunsViewerExpanded() {
+  const panel = $('panel-runs');
+  if (!panel) return;
+  runsViewerExpanded = !runsViewerExpanded;
+  panel.classList.toggle('viewer-expanded', runsViewerExpanded);
+  updateRunsExpandButton();
+}
+
+function highlightTextContent(content, fileName) {
+  const name = String(fileName || '').toLowerCase();
+  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
+  let html = esc(content || '');
+
+  if (ext === '.json') {
+    html = html.replace(/^(\s*)"([^"\\]*(?:\\.[^"\\]*)*)"(\s*:)/gm, '$1<span class="tok-key">"$2"</span>$3');
+    html = html.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, '<span class="tok-str">"$1"</span>');
+    html = html.replace(/\b(true|false|null)\b/g, '<span class="tok-kw">$1</span>');
+    html = html.replace(/\b(-?\d+(?:\.\d+)?)\b/g, '<span class="tok-num">$1</span>');
+    return html;
+  }
+
+  if (ext === '.sh' || ext === '.slurm' || name.endsWith('.bash')) {
+    html = html.replace(/(^|\n)(\s*#.*?)(?=\n|$)/g, '$1<span class="tok-com">$2</span>');
+    html = html.replace(/("[^"\n]*"|'[^'\n]*')/g, '<span class="tok-str">$1</span>');
+    html = html.replace(/\b(if|then|else|fi|for|while|do|done|case|esac|function|echo|cd|export|module|srun|sbatch)\b/g, '<span class="tok-kw">$1</span>');
+    return html;
+  }
+
+  if (ext === '.yaml' || ext === '.yml') {
+    html = html.replace(/(^|\n)(\s*[a-zA-Z0-9_.-]+\s*:)/g, '$1<span class="tok-key">$2</span>');
+    html = html.replace(/(:\s*)([^\n#]+)/g, '$1<span class="tok-str">$2</span>');
+    html = html.replace(/(^|\n)(\s*#.*?)(?=\n|$)/g, '$1<span class="tok-com">$2</span>');
+    return html;
+  }
+
+  html = html.replace(/\b(ERROR|FATAL|EXCEPTION)\b/g, '<span class="tok-err">$1</span>');
+  html = html.replace(/\b(WARN|WARNING)\b/g, '<span class="tok-warn">$1</span>');
+  html = html.replace(/\b(INFO|DEBUG)\b/g, '<span class="tok-info">$1</span>');
+  return html;
+}
+
 function showRunsHtmlViewer(url) {
   const frame = $('runs-viewer');
   const textBox = $('runs-text-viewer');
@@ -811,13 +859,14 @@ function showRunsHtmlViewer(url) {
   }
 }
 
-function showRunsTextViewer(text) {
+function showRunsTextViewer(text, fileName = '', highlight = true) {
   const frame = $('runs-viewer');
   const textBox = $('runs-text-viewer');
   if (frame) frame.style.display = 'none';
   if (textBox) {
     textBox.style.display = '';
-    textBox.textContent = text || '';
+    if (highlight) textBox.innerHTML = highlightTextContent(text || '', fileName);
+    else textBox.textContent = text || '';
   }
 }
 
@@ -899,7 +948,7 @@ async function loadSelectedRunText() {
     toast('Select a run or group text file first', 'warn', '⚠️');
     return;
   }
-  showRunsTextViewer('Loading text artifact...');
+  showRunsTextViewer('Loading text artifact...', '', false);
   try {
     const headers = cfg.authToken ? { Authorization: 'Bearer ' + cfg.authToken } : {};
     const r = await fetch(endpoint, {
@@ -915,9 +964,9 @@ async function loadSelectedRunText() {
     if (data.truncated) {
       content += '\n\n---\nPreview truncated at 512 KiB.';
     }
-    showRunsTextViewer(content);
+    showRunsTextViewer(content, selectedTextFile || selectedGroupText, true);
   } catch (e) {
-    showRunsTextViewer('Could not load text artifact: ' + e.message);
+    showRunsTextViewer('Could not load text artifact: ' + e.message, '', false);
   }
 }
 
@@ -2090,6 +2139,7 @@ $('runs-search').oninput = function(){runsSearch=this.value;renderRunsSummary();
 $('runs-open-mode').onchange = function(){runsOpenMode=this.value;localStorage.setItem(RUNS_MODE_KEY, runsOpenMode);};
 $('btn-runs-open-selected').onclick = openSelectedRunHtml;
 $('btn-runs-load-text').onclick = loadSelectedRunText;
+$('btn-runs-expand').onclick = toggleRunsViewerExpanded;
 $('share-filter').oninput = function(){shareFilter=this.value;if(shareRaw)renderShareCards(shareRaw);};
 $('share-sort-key').onchange = function(){shareSort.key=this.value;if(shareRaw)renderShareCards(shareRaw);};
 $('btn-share-sort-dir').onclick=()=>{shareSort.direction=shareSort.direction==='asc'?'desc':'asc';if(shareRaw)renderShareCards(shareRaw);};
@@ -2157,6 +2207,7 @@ if($('cfg-notif')) $('cfg-notif').checked=cfg.desktopNotif||false;
 if($('cfg-webhook')) $('cfg-webhook').value=cfg.webhookUrl||'';
 if($('cfg-auth-token')) $('cfg-auth-token').value=cfg.authToken||'';
 if($('runs-open-mode')) $('runs-open-mode').value=runsOpenMode;
+updateRunsExpandButton();
 syncShareSortControls();
 if(cfg.demoMode){$('btn-demo').classList.add('active');$('btn-live').classList.remove('active');}
 else{$('btn-live').classList.add('active');$('btn-demo').classList.remove('active');}
