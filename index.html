@@ -21,7 +21,15 @@
       <span class="logo-sub">MISSION CONTROL</span>
     </div>
     <div class="header-center">
-      <div id="conn-status" class="conn-status connecting">⚡ CONNECTING</div>
+      <div class="header-center-stack">
+        <div id="conn-status" class="conn-status connecting">⚡ CONNECTING</div>
+        <div id="queue-summary-strip" class="queue-summary-strip" aria-label="Queue summary">
+          <div class="queue-summary-chip running"><span class="queue-summary-label">RUN</span><span class="queue-summary-value" id="hdr-running">0</span></div>
+          <div class="queue-summary-chip pending"><span class="queue-summary-label">PEND</span><span class="queue-summary-value" id="hdr-pending">0</span></div>
+          <div class="queue-summary-chip other"><span class="queue-summary-label">OTHER</span><span class="queue-summary-value" id="hdr-other">0</span></div>
+          <div class="queue-summary-chip total"><span class="queue-summary-label">TOTAL</span><span class="queue-summary-value" id="hdr-total">0</span></div>
+        </div>
+      </div>
     </div>
     <div class="header-right">
       <button class="btn-icon" id="btn-notif" title="Desktop notifications (N)">🔔</button>

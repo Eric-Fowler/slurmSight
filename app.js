@@ -12,6 +12,7 @@ const $ = id => document.getElementById(id);
 // ─────────────────────────────────────────
 const CFG_KEY = 'slurmSight_cfg';
 const RUNS_MODE_KEY = 'slurmSight_runs_open_mode';
+const UI_STATE_KEY = 'slurmSight_ui_state';
 let cfg = {
   serverUrl:      'http://localhost:8787',
   refreshInterval: 5,
@@ -135,6 +136,7 @@ let runsOpenMode = localStorage.getItem(RUNS_MODE_KEY) || 'embed';
 let runsViewerExpanded = false;
 let serverCapabilities  = { enable_submit: false, enable_metrics: false, enable_runs_browser: true };
 let modalRefreshTimer = null;
+let activePanel = 'queue';
 
 // ─────────────────────────────────────────
 // Search filter helper
@@ -237,6 +239,135 @@ function computeQueueInsights(jobs) {
     });
   });
   return insights;
+}
+
+function encodeSortState(sortState) {
+  return [sortState.key || '', sortState.direction || 'asc', sortState.type || 'string'].join(':');
+}
+
+function applySortState(target, raw, fallback) {
+  if (!raw) return;
+  const [key, direction, type] = String(raw).split(':');
+  if (!key) return;
+  target.key = key;
+  target.direction = direction === 'asc' ? 'asc' : 'desc';
+  target.type = type || fallback.type || 'string';
+}
+
+function collectUiState() {
+  return {
+    activePanel,
+    queueSearch,
+    historySearch,
+    shareFilter,
+    usersSearch,
+    usersPartitionFilter,
+    runsSearch,
+    runsOpenMode,
+    selectedBatch,
+    queueSort: encodeSortState(queueSort),
+    historySort: encodeSortState(historySort),
+    infoSort: encodeSortState(infoSort),
+    gpuSort: encodeSortState(gpuSort),
+    cpuSort: encodeSortState(cpuSort),
+    runsSummarySort: encodeSortState(runsSummarySort),
+    shareSortKey: shareSort.key,
+    shareSortDir: shareSort.direction,
+  };
+}
+
+function syncUrlState() {
+  const state = collectUiState();
+  const params = new URLSearchParams();
+  params.set('tab', state.activePanel || 'queue');
+  if (state.queueSearch) params.set('q', state.queueSearch);
+  if (state.historySearch) params.set('history', state.historySearch);
+  if (state.shareFilter) params.set('share', state.shareFilter);
+  if (state.usersSearch) params.set('users', state.usersSearch);
+  if (state.usersPartitionFilter && state.usersPartitionFilter !== 'ALL') params.set('usersPart', state.usersPartitionFilter);
+  if (state.runsSearch) params.set('runs', state.runsSearch);
+  if (state.selectedBatch) params.set('batch', state.selectedBatch);
+  if (state.runsOpenMode && state.runsOpenMode !== 'embed') params.set('runsMode', state.runsOpenMode);
+  params.set('queueSort', state.queueSort);
+  params.set('historySort', state.historySort);
+  params.set('infoSort', state.infoSort);
+  params.set('gpuSort', state.gpuSort);
+  params.set('cpuSort', state.cpuSort);
+  params.set('runsSort', state.runsSummarySort);
+  if (state.shareSortKey) params.set('shareSort', `${state.shareSortKey}:${state.shareSortDir || 'desc'}`);
+  const hash = params.toString();
+  history.replaceState(null, '', window.location.pathname + window.location.search + (hash ? '#' + hash : ''));
+}
+
+function persistUiState() {
+  localStorage.setItem(UI_STATE_KEY, JSON.stringify(collectUiState()));
+  syncUrlState();
+}
+
+function readInitialUiState() {
+  let state = {};
+  try {
+    state = JSON.parse(localStorage.getItem(UI_STATE_KEY) || '{}') || {};
+  } catch (_) {}
+
+  const rawHash = (window.location.hash || '').replace(/^#\??/, '');
+  if (rawHash) {
+    const params = new URLSearchParams(rawHash);
+    if (params.get('tab')) state.activePanel = params.get('tab');
+    if (params.has('q')) state.queueSearch = params.get('q') || '';
+    if (params.has('history')) state.historySearch = params.get('history') || '';
+    if (params.has('share')) state.shareFilter = params.get('share') || '';
+    if (params.has('users')) state.usersSearch = params.get('users') || '';
+    if (params.has('usersPart')) state.usersPartitionFilter = params.get('usersPart') || 'ALL';
+    if (params.has('runs')) state.runsSearch = params.get('runs') || '';
+    if (params.has('batch')) state.selectedBatch = params.get('batch') || '';
+    if (params.has('runsMode')) state.runsOpenMode = params.get('runsMode') || 'embed';
+    if (params.has('queueSort')) state.queueSort = params.get('queueSort');
+    if (params.has('historySort')) state.historySort = params.get('historySort');
+    if (params.has('infoSort')) state.infoSort = params.get('infoSort');
+    if (params.has('gpuSort')) state.gpuSort = params.get('gpuSort');
+    if (params.has('cpuSort')) state.cpuSort = params.get('cpuSort');
+    if (params.has('runsSort')) state.runsSummarySort = params.get('runsSort');
+    if (params.has('shareSort')) {
+      const [key, direction] = String(params.get('shareSort') || '').split(':');
+      if (key) {
+        state.shareSortKey = key;
+        state.shareSortDir = direction || 'desc';
+      }
+    }
+  }
+  return state;
+}
+
+function applyInitialUiState() {
+  const state = readInitialUiState();
+  activePanel = TAB_PANELS.includes(state.activePanel) ? state.activePanel : 'queue';
+  queueSearch = state.queueSearch || '';
+  historySearch = state.historySearch || '';
+  shareFilter = state.shareFilter || '';
+  usersSearch = state.usersSearch || '';
+  usersPartitionFilter = state.usersPartitionFilter || 'ALL';
+  runsSearch = state.runsSearch || '';
+  selectedBatch = state.selectedBatch || '';
+  runsOpenMode = state.runsOpenMode || runsOpenMode;
+  applySortState(queueSort, state.queueSort, { type: 'number' });
+  applySortState(historySort, state.historySort, { type: 'number' });
+  applySortState(infoSort, state.infoSort, { type: 'string' });
+  applySortState(gpuSort, state.gpuSort, { type: 'string' });
+  applySortState(cpuSort, state.cpuSort, { type: 'string' });
+  applySortState(runsSummarySort, state.runsSummarySort, { type: 'string' });
+  if (state.shareSortKey) shareSort.key = state.shareSortKey;
+  if (state.shareSortDir) shareSort.direction = state.shareSortDir === 'asc' ? 'asc' : 'desc';
+}
+
+function syncUiControlsFromState() {
+  if ($('queue-search')) $('queue-search').value = queueSearch;
+  if ($('history-search')) $('history-search').value = historySearch;
+  if ($('share-filter')) $('share-filter').value = shareFilter;
+  if ($('users-search')) $('users-search').value = usersSearch;
+  if ($('runs-search')) $('runs-search').value = runsSearch;
+  if ($('runs-open-mode')) $('runs-open-mode').value = runsOpenMode;
+  syncShareSortControls();
 }
 
 // ─────────────────────────────────────────
@@ -698,6 +829,10 @@ function renderQueue(jobs) {
   animNum('stat-pending', pending);
   animNum('stat-other', other);
   animNum('stat-total', jobs.length);
+  animNum('hdr-running', running);
+  animNum('hdr-pending', pending);
+  animNum('hdr-other', other);
+  animNum('hdr-total', jobs.length);
 
   // Apply search filter
   const filter = buildFilter(queueSearch);
@@ -1252,6 +1387,7 @@ function renderRunsSummary() {
       selectedGroupHtml = '';
       selectedGroupText = '';
       renderRunsSummary();
+      persistUiState();
       if (selectedBatch) fetchRunsForBatch(selectedBatch);
     });
   });
@@ -1659,8 +1795,29 @@ function setupTableSorting(tableSelector, sortState, onSort) {
       else { sortState.key=nextKey; sortState.direction=nextKey==='jobid'?'desc':'asc'; }
       sortState.type=nextType;
       onSort();
+      persistUiState();
     });
   });
+}
+
+function activatePanel(panelName, options = {}) {
+  const panel = TAB_PANELS.includes(panelName) ? panelName : 'queue';
+  const shouldFetch = options.fetch !== false;
+  activePanel = panel;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.panel === panel));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + panel));
+
+  if (shouldFetch) {
+    if(panel==='share') fetchShare();
+    else if(panel==='info') fetchInfo();
+    else if(panel==='gpu') fetchGpuNodes();
+    else if(panel==='cpu') fetchCpuNodes();
+    else if(panel==='history') fetchHistory();
+    else if(panel==='runs') fetchRunsSummary();
+    else if(panel==='users') fetchUsersQueue();
+    else if(panel==='metrics') fetchMetrics();
+  }
+  persistUiState();
 }
 
 function parseHistoryRows(raw) {
@@ -1743,7 +1900,7 @@ function renderUsersPartitionChips(jobs) {
     chip.dataset.part=p;
     chip.appendChild(document.createTextNode(p));
     if(p!=='ALL'){const cnt=document.createElement('span');cnt.className='counts';cnt.textContent=partitionCounts[p]||0;chip.appendChild(cnt);}
-    chip.addEventListener('click',()=>{usersPartitionFilter=chip.dataset.part;renderUsersPanel(usersRows);});
+    chip.addEventListener('click',()=>{usersPartitionFilter=chip.dataset.part;renderUsersPanel(usersRows);persistUiState();});
     chipContainer.appendChild(chip);
   });
 }
@@ -2267,20 +2424,7 @@ document.addEventListener('keydown', e => {
 // ─────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn=>{
   btn.addEventListener('click',()=>{
-    document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
-    btn.classList.add('active');
-    const panel=document.getElementById('panel-'+btn.dataset.panel);
-    if(panel) panel.classList.add('active');
-    const p=btn.dataset.panel;
-    if(p==='share') fetchShare();
-    else if(p==='info') fetchInfo();
-    else if(p==='gpu') fetchGpuNodes();
-    else if(p==='cpu') fetchCpuNodes();
-    else if(p==='history') fetchHistory();
-    else if(p==='runs') fetchRunsSummary();
-    else if(p==='users') fetchUsersQueue();
-    else if(p==='metrics') fetchMetrics();
+    activatePanel(btn.dataset.panel);
   });
 });
 
@@ -2295,20 +2439,20 @@ $('btn-refresh-cpu').onclick = fetchCpuNodes;
 $('btn-refresh-history').onclick = fetchHistory;
 $('btn-refresh-runs').onclick = fetchRunsSummary;
 $('btn-refresh-users').onclick = fetchUsersQueue;
-$('users-search').oninput = function(){usersSearch=this.value;renderUsersPanel(usersRows);};
-$('runs-search').oninput = function(){runsSearch=this.value;renderRunsSummary();};
-$('runs-open-mode').onchange = function(){runsOpenMode=this.value;localStorage.setItem(RUNS_MODE_KEY, runsOpenMode);};
+$('users-search').oninput = function(){usersSearch=this.value;renderUsersPanel(usersRows);persistUiState();};
+$('runs-search').oninput = function(){runsSearch=this.value;renderRunsSummary();persistUiState();};
+$('runs-open-mode').onchange = function(){runsOpenMode=this.value;localStorage.setItem(RUNS_MODE_KEY, runsOpenMode);persistUiState();};
 $('btn-runs-open-selected').onclick = openSelectedRunHtml;
 $('btn-runs-load-text').onclick = loadSelectedRunText;
 $('btn-runs-expand').onclick = toggleRunsViewerExpanded;
-$('share-filter').oninput = function(){shareFilter=this.value;if(shareRaw)renderShareCards(shareRaw);};
-$('share-sort-key').onchange = function(){shareSort.key=this.value;if(shareRaw)renderShareCards(shareRaw);};
-$('btn-share-sort-dir').onclick=()=>{shareSort.direction=shareSort.direction==='asc'?'desc':'asc';if(shareRaw)renderShareCards(shareRaw);};
+$('share-filter').oninput = function(){shareFilter=this.value;if(shareRaw)renderShareCards(shareRaw);persistUiState();};
+$('share-sort-key').onchange = function(){shareSort.key=this.value;if(shareRaw)renderShareCards(shareRaw);persistUiState();};
+$('btn-share-sort-dir').onclick=()=>{shareSort.direction=shareSort.direction==='asc'?'desc':'asc';if(shareRaw)renderShareCards(shareRaw);persistUiState();};
 
 const qSearchEl=$('queue-search');
-if(qSearchEl) qSearchEl.oninput=function(){queueSearch=this.value;renderQueue(Object.values(prevJobs));};
+if(qSearchEl) qSearchEl.oninput=function(){queueSearch=this.value;renderQueue(Object.values(prevJobs));persistUiState();};
 const hSearchEl=$('history-search');
-if(hSearchEl) hSearchEl.oninput=function(){historySearch=this.value;renderHistoryTable();};
+if(hSearchEl) hSearchEl.oninput=function(){historySearch=this.value;renderHistoryTable();persistUiState();};
 
 $('cfg-refresh').oninput=function(){$('cfg-refresh-val').textContent=this.value+'s';};
 $('btn-demo').onclick=()=>{cfg.demoMode=true;$('btn-demo').classList.add('active');$('btn-live').classList.remove('active');setStatus('demo');};
@@ -2325,7 +2469,7 @@ $('btn-save').onclick=()=>{
   localStorage.setItem(CFG_KEY,JSON.stringify(cfg));
   startRefreshCycle();
   toast('Settings saved!','success','💾');
-  document.querySelector('.tab[data-panel="queue"]').click();
+  activatePanel('queue');
 };
 
 const themeBtn=$('btn-theme');
@@ -2371,6 +2515,7 @@ const modalOutputBtn = $('modal-btn-output');
 if (modalOutputBtn) modalOutputBtn.onclick = loadJobOutputPreview;
 
 // Populate settings
+applyInitialUiState();
 $('cfg-server').value=cfg.serverUrl;
 $('cfg-refresh').value=cfg.refreshInterval;
 $('cfg-refresh-val').textContent=cfg.refreshInterval+'s';
@@ -2379,7 +2524,7 @@ $('cfg-sounds').checked=cfg.sounds;
 if($('cfg-notif')) $('cfg-notif').checked=cfg.desktopNotif||false;
 if($('cfg-webhook')) $('cfg-webhook').value=cfg.webhookUrl||'';
 if($('cfg-auth-token')) $('cfg-auth-token').value=cfg.authToken||'';
-if($('runs-open-mode')) $('runs-open-mode').value=runsOpenMode;
+syncUiControlsFromState();
 updateRunsExpandButton();
 syncShareSortControls();
 if(cfg.demoMode){$('btn-demo').classList.add('active');$('btn-live').classList.remove('active');}
@@ -2403,5 +2548,6 @@ setupTableSorting('#runs-summary-table', runsSummarySort, renderRunsSummary);
 startRefreshCycle();
 updateSubmitVisibility();
 if(!cfg.demoMode) fetchServerCapabilities();
+activatePanel(activePanel, { fetch: activePanel !== 'queue' });
 
 setTimeout(()=>toast('Welcome to slurmSight Mission Control!','purple','🚀',4000), 800);

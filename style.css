@@ -85,7 +85,8 @@ body{display:flex;flex-direction:column}
   font-size:9px;letter-spacing:3px;color:var(--text-dim);
   font-family:var(--font-mono);text-transform:uppercase;
 }
-.header-center{flex:1;display:flex;justify-content:center}
+.header-center{flex:1;display:flex;justify-content:center;min-width:0}
+.header-center-stack{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0}
 #conn-status{
   padding:4px 14px;border-radius:20px;font-size:11px;
   font-family:var(--font-mono);letter-spacing:2px;
@@ -96,6 +97,23 @@ body{display:flex;flex-direction:column}
 #conn-status.err{color:var(--danger);background:var(--danger-dim)}
 #conn-status.connecting{color:var(--warn);background:var(--warn-dim);animation:pulse-border 1s ease-in-out infinite}
 @keyframes pulse-border{0%,100%{opacity:.6}50%{opacity:1}}
+.queue-summary-strip{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;
+}
+.queue-summary-chip{
+  display:flex;align-items:center;gap:7px;padding:4px 9px;border-radius:999px;
+  border:1px solid var(--border);background:var(--surf);min-width:76px;justify-content:space-between;
+}
+.queue-summary-label{
+  font-size:9px;letter-spacing:1.4px;color:var(--text-dim);font-family:var(--font-mono);
+}
+.queue-summary-value{
+  font-size:12px;font-weight:700;font-family:var(--font-mono);color:var(--text);
+}
+.queue-summary-chip.running .queue-summary-value{color:var(--success)}
+.queue-summary-chip.pending .queue-summary-value{color:var(--warn)}
+.queue-summary-chip.other .queue-summary-value{color:var(--orange)}
+.queue-summary-chip.total .queue-summary-value{color:var(--primary)}
 .header-right{
   display:flex;align-items:center;gap:10px;flex-shrink:0
 }
@@ -1124,6 +1142,7 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
 ───────────────────────────────────────────── */
 @media(max-width:700px){
   .logo-sub{display:none}
+  .queue-summary-chip{min-width:68px;padding:4px 8px}
   th:nth-child(n+8){display:none}
   td:nth-child(n+8){display:none}
   .header-actions .btn-icon:nth-child(n+3){display:none}
