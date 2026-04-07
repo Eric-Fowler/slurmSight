@@ -1237,8 +1237,18 @@ function updateSubmitVisibility() {
   const tab = document.querySelector('.tab[data-panel="submit"]');
   const metricsTab = document.querySelector('.tab[data-panel="metrics"]');
   const runsTab = document.querySelector('.tab[data-panel="runs"]');
-  if (tab) tab.style.display = serverCapabilities.enable_submit ? '' : 'none';
-  if (metricsTab) metricsTab.style.display = serverCapabilities.enable_metrics ? '' : 'none';
+  if (tab) {
+    tab.classList.toggle('unavailable', !serverCapabilities.enable_submit);
+    tab.title = serverCapabilities.enable_submit
+      ? 'Submit jobs'
+      : 'Job submission is disabled on this server';
+  }
+  if (metricsTab) {
+    metricsTab.classList.toggle('unavailable', !serverCapabilities.enable_metrics);
+    metricsTab.title = serverCapabilities.enable_metrics
+      ? 'Queue metrics'
+      : 'Metrics are disabled on this server';
+  }
   if (runsTab) runsTab.style.display = serverCapabilities.enable_runs_browser === false ? 'none' : '';
   const notice = $('submit-disabled-notice');
   if (notice) notice.style.display = serverCapabilities.enable_submit ? 'none' : '';

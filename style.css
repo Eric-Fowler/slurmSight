@@ -153,6 +153,13 @@ body{display:flex;flex-direction:column}
   background:var(--primary-dim);color:var(--primary);
   border-color:var(--primary);box-shadow:var(--glow-primary);
 }
+.tab.unavailable{
+  color:var(--text-dimmer);
+  border-style:dashed;
+  border-color:var(--border);
+  opacity:.78;
+}
+.tab.unavailable:hover{background:var(--surf);color:var(--text-dim);border-color:var(--border2)}
 .tab-badge{
   display:inline-block;min-width:18px;height:18px;
   background:var(--danger);color:#fff;border-radius:9px;
