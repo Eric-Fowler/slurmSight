@@ -24,6 +24,7 @@ import http.server
 import json
 import mimetypes
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -54,6 +55,7 @@ TEXT_EXTENSIONS = {
     ".txt", ".log", ".out", ".err", ".json", ".yaml", ".yml", ".csv", ".tsv", ".md", ".sh", ".slurm"
 }
 MAX_TEXT_PREVIEW_BYTES = 512 * 1024
+MAX_JOB_OUTPUT_PREVIEW_BYTES = 64 * 1024
 
 
 def _find_config_path():
@@ -636,6 +638,92 @@ def read_batch_text_file(batch_name: str, file_name: str) -> dict:
         return {"ok": False, "err": str(e)}
 
 
+def _parse_kv_tokens(line: str) -> dict:
+    kv = {}
+    if not line:
+        return kv
+    for match in re.finditer(r"(\w+)=((?:[^\s]|\\\s)+)", line):
+        key = match.group(1)
+        val = match.group(2).replace("\\ ", " ")
+        kv[key] = val
+    return kv
+
+
+def _resolve_job_output_path(path: str, jobid: str, workdir: str = "") -> str:
+    raw = str(path or "").strip()
+    if not raw or raw == "(null)":
+        return ""
+    resolved = raw.replace("%j", str(jobid)).replace("%A", str(jobid)).replace("%a", "0")
+    if os.path.isabs(resolved):
+        return os.path.normpath(resolved)
+    base = workdir.strip() if workdir else ""
+    if not base:
+        base = os.path.expanduser("~")
+    return os.path.normpath(os.path.join(base, resolved))
+
+
+def _read_file_tail(path: str, max_bytes: int = MAX_JOB_OUTPUT_PREVIEW_BYTES) -> dict:
+    if not path:
+        return {"exists": False, "path": "", "content": "", "truncated": False, "size": 0}
+    try:
+        size = os.path.getsize(path)
+        read_len = min(size, max_bytes)
+        with open(path, "rb") as f:
+            if size > read_len:
+                f.seek(-read_len, os.SEEK_END)
+            data = f.read(read_len)
+        return {
+            "exists": True,
+            "path": path,
+            "content": data.decode("utf-8", errors="replace"),
+            "truncated": size > read_len,
+            "size": size,
+        }
+    except OSError as e:
+        return {
+            "exists": False,
+            "path": path,
+            "content": "",
+            "truncated": False,
+            "size": 0,
+            "err": str(e),
+        }
+
+
+def get_job_output_preview(jobid: str) -> dict:
+    jid = str(jobid or "").strip()
+    if not jid:
+        return {"ok": False, "err": "Missing jobid"}
+
+    info = run_slurm(["scontrol", "show", "job", "-o", jid], timeout=12)
+    if not info.get("ok"):
+        return {"ok": False, "err": info.get("err") or "Could not inspect job metadata"}
+
+    line = ""
+    for cand in (info.get("out") or "").splitlines():
+        if cand.strip():
+            line = cand.strip()
+            break
+    if not line:
+        return {"ok": False, "err": "No job metadata returned"}
+
+    meta = _parse_kv_tokens(line)
+    workdir = meta.get("WorkDir", "")
+    stdout_path = _resolve_job_output_path(meta.get("StdOut", ""), jid, workdir)
+    stderr_path = _resolve_job_output_path(meta.get("StdErr", ""), jid, workdir)
+
+    stdout = _read_file_tail(stdout_path)
+    stderr = _read_file_tail(stderr_path)
+
+    return {
+        "ok": True,
+        "jobid": jid,
+        "stdout": stdout,
+        "stderr": stderr,
+        "workdir": workdir,
+    }
+
+
 # ──────────────────────────────────────────────────────────────
 # Static files
 # ──────────────────────────────────────────────────────────────
@@ -841,6 +929,15 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
             status = 200 if result.get("ok") else 404
             self._send_json(result, status=status)
 
+        elif path == "/api/job-output":
+            jobid = (query.get("jobid") or [""])[0].strip()
+            if not jobid:
+                self._send_json({"ok": False, "err": "Missing required query parameter: jobid"}, 400)
+                return
+            result = get_job_output_preview(jobid)
+            status = 200 if result.get("ok") else 404
+            self._send_json(result, status=status)
+
         elif path == "/api/squeueall":
             if not CONFIG["enable_all_users"]:
                 self._send_json(
@@ -966,8 +1063,16 @@ if __name__ == "__main__":
 
     try:
         with _socket.create_connection(("127.0.0.1", PORT), timeout=1):
-            subprocess.run(["fuser", "-k", f"{PORT}/tcp"], capture_output=True, timeout=5)
-            time.sleep(0.5)
+            if _is_truthy(os.environ.get("SLURMSIGHT_FORCE_KILL_PORT", "0")):
+                subprocess.run(["fuser", "-k", f"{PORT}/tcp"], capture_output=True, timeout=5)
+                time.sleep(0.5)
+            else:
+                print(
+                    f"❌ Port {PORT} is already in use. Stop the existing process or rerun with "
+                    "SLURMSIGHT_FORCE_KILL_PORT=1 to force-kill.",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
     except (ConnectionRefusedError, OSError):
         pass
 

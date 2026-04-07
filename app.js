@@ -134,6 +134,7 @@ let selectedGroupText = '';
 let runsOpenMode = localStorage.getItem(RUNS_MODE_KEY) || 'embed';
 let runsViewerExpanded = false;
 let serverCapabilities  = { enable_submit: false, enable_metrics: false, enable_runs_browser: true };
+let modalRefreshTimer = null;
 
 // ─────────────────────────────────────────
 // Search filter helper
@@ -181,6 +182,61 @@ function formatEpoch(ts) {
   const d = new Date(n * 1000);
   if (isNaN(d)) return 'N/A';
   return d.toLocaleString();
+}
+
+function formatEta(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return 'Unknown';
+  const total = Math.round(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  if (h > 0) return `~${h}h ${String(m).padStart(2, '0')}m`;
+  if (m > 0) return `~${m}m`;
+  return '<1m';
+}
+
+function computeQueueInsights(jobs) {
+  const pendingByPartition = {};
+  const runningByPartition = {};
+  const runningRemainByPartition = {};
+
+  for (const job of jobs) {
+    const part = job.partition || 'default';
+    if (job.state === 'PENDING') {
+      if (!pendingByPartition[part]) pendingByPartition[part] = [];
+      pendingByPartition[part].push(job);
+      continue;
+    }
+    if (job.state === 'RUNNING') {
+      runningByPartition[part] = (runningByPartition[part] || 0) + 1;
+      const limitSecs = parseDurationToSeconds(job.timelimit);
+      const elapsedSecs = parseDurationToSeconds(job.elapsed);
+      const remain = Math.max(0, limitSecs - elapsedSecs);
+      if (remain > 0) {
+        if (!runningRemainByPartition[part]) runningRemainByPartition[part] = [];
+        runningRemainByPartition[part].push(remain);
+      }
+    }
+  }
+
+  const insights = {};
+  Object.entries(pendingByPartition).forEach(([part, list]) => {
+    const ordered = [...list].sort((a, b) => {
+      const ap = Number.parseFloat(a.priority) || 0;
+      const bp = Number.parseFloat(b.priority) || 0;
+      if (bp !== ap) return bp - ap;
+      return String(a.jobid).localeCompare(String(b.jobid), undefined, { numeric: true });
+    });
+    const runCount = runningByPartition[part] || 0;
+    const rems = runningRemainByPartition[part] || [];
+    const avgRemain = rems.length ? rems.reduce((sum, val) => sum + val, 0) / rems.length : 0;
+    ordered.forEach((job, idx) => {
+      insights[job.jobid] = {
+        position: idx + 1,
+        etaSeconds: runCount > 0 && avgRemain > 0 ? (idx * avgRemain) / runCount : NaN,
+      };
+    });
+  });
+  return insights;
 }
 
 // ─────────────────────────────────────────
@@ -574,6 +630,17 @@ function renderQueueCards(jobs) {
 // ─────────────────────────────────────────
 function renderQueue(jobs) {
   const tbody = $('job-tbody');
+  const queueInsights = computeQueueInsights(jobs);
+  for (const j of jobs) {
+    const insight = queueInsights[j.jobid];
+    if (insight) {
+      j.queuePosition = insight.position;
+      j.queueEtaSeconds = insight.etaSeconds;
+    } else {
+      delete j.queuePosition;
+      delete j.queueEtaSeconds;
+    }
+  }
   const nowMap = {};
   for (const j of jobs) nowMap[j.jobid] = j;
 
@@ -673,6 +740,9 @@ function renderQueue(jobs) {
     const prioLabel = j.priority && j.priority !== 'N/A'
       ? `<span class="priority-chip ${prioClass}">${j.priority}</span>` : '';
     const reasonOrPrio = (j.reason && j.reason !== 'None') ? esc(j.reason) : prioLabel;
+    const queueHint = j.state === 'PENDING' && Number.isFinite(j.queuePosition)
+      ? `<div class="queue-hint">Q#${esc(String(j.queuePosition))} • ${esc(formatEta(j.queueEtaSeconds))}</div>`
+      : '';
     const startRel = j.start && j.start !== 'N/A'
       ? `<span title="${esc(j.start)}">${esc(relTime(j.start))}</span>` : esc(j.start || 'N/A');
 
@@ -687,7 +757,7 @@ function renderQueue(jobs) {
       <td>${esc(j.cpus)}</td>
       <td>${esc(j.mem)}</td>
       <td title="${esc(j.nodelist)}">${esc(j.nodelist&&j.nodelist!=='N/A'?j.nodelist.slice(0,22):j.nodelist)}</td>
-      <td>${reasonOrPrio}</td>`;
+      <td><div class="reason-cell">${reasonOrPrio}${queueHint}</div></td>`;
 
     if (existing[j.jobid]) {
       const row = existing[j.jobid];
@@ -716,6 +786,13 @@ function renderQueue(jobs) {
       }
       tbody.querySelectorAll('.empty-row').forEach(r => r.remove());
       tbody.appendChild(row);
+    }
+  }
+  if (currentJobDetail) {
+    const latest = prevJobs[currentJobDetail.jobid];
+    if (latest) {
+      currentJobDetail = latest;
+      populateJobModal(latest);
     }
   }
   updateSortableHeaders('#job-table', queueSort);
@@ -1932,11 +2009,26 @@ function openJobModal(job) {
   currentJobDetail = job;
   populateJobModal(job);
   $('job-modal').classList.add('active');
+  const output = $('modal-output-preview');
+  if (output) output.textContent = 'Click LOAD OUTPUT to fetch recent stdout/stderr lines.';
+  if (modalRefreshTimer) clearInterval(modalRefreshTimer);
+  modalRefreshTimer = setInterval(() => {
+    if (!currentJobDetail || !$('job-modal').classList.contains('active')) return;
+    const latest = prevJobs[currentJobDetail.jobid];
+    if (latest) {
+      currentJobDetail = latest;
+      populateJobModal(latest);
+    }
+  }, 5000);
 }
 
 function closeJobModal() {
   $('job-modal').classList.remove('active');
   currentJobDetail = null;
+  if (modalRefreshTimer) {
+    clearInterval(modalRefreshTimer);
+    modalRefreshTimer = null;
+  }
 }
 
 function populateJobModal(job) {
@@ -1951,6 +2043,20 @@ function populateJobModal(job) {
   $('modal-nodelist').textContent = job.nodelist||'N/A';
   $('modal-elapsed').textContent = job.elapsed;
   $('modal-timelimit').textContent = job.timelimit;
+  const qPosEl = $('modal-queue-pos');
+  if (qPosEl) {
+    qPosEl.textContent = job.state === 'PENDING' && Number.isFinite(job.queuePosition)
+      ? `#${job.queuePosition} (${job.partition})`
+      : 'N/A';
+  }
+  const estEl = $('modal-est-start');
+  if (estEl) {
+    if (job.state === 'RUNNING' && job.start && job.start !== 'N/A') {
+      estEl.textContent = 'Already running';
+    } else {
+      estEl.textContent = job.state === 'PENDING' ? formatEta(job.queueEtaSeconds) : 'N/A';
+    }
+  }
   const startEl = $('modal-start');
   if (startEl) {
     if (job.start && job.start !== 'N/A') {
@@ -1977,6 +2083,61 @@ function populateJobModal(job) {
   cancelBtn.disabled = !canCancel;
   cancelBtn.textContent = '❌ CANCEL';
   cancelBtn.style.opacity = canCancel ? '1' : '0.5';
+}
+
+async function loadJobOutputPreview() {
+  if (!currentJobDetail) return;
+  const out = $('modal-output-preview');
+  const btn = $('modal-btn-output');
+  if (!out || !btn) return;
+
+  if (cfg.demoMode) {
+    out.textContent = `Demo output for job ${currentJobDetail.jobid}\n[INFO] Mock run is active\n[INFO] Step 1 complete\n[WARN] This is demo data`;
+    return;
+  }
+
+  const jid = currentJobDetail.jobid;
+  btn.disabled = true;
+  btn.textContent = '⏳ LOADING…';
+  out.textContent = 'Loading output preview...';
+  try {
+    const headers = cfg.authToken ? { Authorization: 'Bearer ' + cfg.authToken } : {};
+    const r = await fetch(
+      cfg.serverUrl + '/api/job-output?jobid=' + encodeURIComponent(jid),
+      { signal: AbortSignal.timeout(10000), headers },
+    );
+    const data = await r.json();
+    if (!data.ok) {
+      out.textContent = `Could not load output preview: ${data.err || 'Unknown error'}`;
+      return;
+    }
+
+    const sections = [];
+    const stdout = data.stdout || {};
+    const stderr = data.stderr || {};
+
+    sections.push(`STDOUT: ${stdout.exists ? (stdout.path || '(path unknown)') : 'not found'}`);
+    if (stdout.exists && stdout.content) {
+      sections.push(stdout.truncated ? '[tail preview]\n' + stdout.content : stdout.content);
+    } else if (stdout.err) {
+      sections.push(`(error reading stdout: ${stdout.err})`);
+    }
+
+    sections.push('\n' + '='.repeat(80) + '\n');
+    sections.push(`STDERR: ${stderr.exists ? (stderr.path || '(path unknown)') : 'not found'}`);
+    if (stderr.exists && stderr.content) {
+      sections.push(stderr.truncated ? '[tail preview]\n' + stderr.content : stderr.content);
+    } else if (stderr.err) {
+      sections.push(`(error reading stderr: ${stderr.err})`);
+    }
+
+    out.textContent = sections.join('\n');
+  } catch (e) {
+    out.textContent = `Error loading output preview: ${e.message || e}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📄 LOAD OUTPUT';
+  }
 }
 
 async function cancelJob() {
@@ -2195,7 +2356,19 @@ if(modalCloseBtn) modalCloseBtn.onclick=closeJobModal;
 const modalCancelBtn=$('modal-btn-cancel');
 if(modalCancelBtn) modalCancelBtn.onclick=cancelJob;
 const modalDetailsBtn=$('modal-btn-details');
-if(modalDetailsBtn) modalDetailsBtn.onclick=()=>toast('Full details coming soon!','info','ℹ️');
+if(modalDetailsBtn) modalDetailsBtn.onclick=()=>{
+  if (!currentJobDetail) return;
+  const latest = prevJobs[currentJobDetail.jobid];
+  if (latest) {
+    currentJobDetail = latest;
+    populateJobModal(latest);
+    toast(`Refreshed job ${latest.jobid}`, 'info', '↻', 1800);
+  } else {
+    toast('Job is no longer in current queue view', 'warn', 'ℹ️', 2200);
+  }
+};
+const modalOutputBtn = $('modal-btn-output');
+if (modalOutputBtn) modalOutputBtn.onclick = loadJobOutputPreview;
 
 // Populate settings
 $('cfg-server').value=cfg.serverUrl;

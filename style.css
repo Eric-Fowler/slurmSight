@@ -618,6 +618,14 @@ code{font-family:var(--font-mono);background:var(--surf2);padding:2px 5px;border
 .priority-chip.high{color:var(--success);background:var(--success-dim)}
 .priority-chip.low{color:var(--text-dimmer)}
 
+.reason-cell{display:flex;flex-direction:column;gap:3px}
+.queue-hint{
+  font-size:10px;
+  color:var(--text-dimmer);
+  font-family:var(--font-mono);
+  letter-spacing:.4px;
+}
+
 /* ─────────────────────────────────────────────
    Fairshare Cards
 ───────────────────────────────────────────── */
@@ -742,6 +750,21 @@ code{font-family:var(--font-mono);background:var(--surf2);padding:2px 5px;border
 }
 .detail-key{color:var(--text-dim);font-family:var(--font-mono);min-width:120px}
 .detail-val{color:var(--text);font-family:var(--font-mono);font-weight:600;text-align:right}
+.output-actions{margin-bottom:8px}
+.modal-output-preview{
+  margin:0;
+  max-height:220px;
+  overflow:auto;
+  border-radius:8px;
+  padding:10px;
+  border:1px solid var(--border);
+  background:var(--bg2);
+  color:var(--text);
+  font-family:var(--font-mono);
+  font-size:11px;
+  line-height:1.45;
+  white-space:pre-wrap;
+}
 .job-actions{
   display:flex;gap:10px;padding-top:12px;border-top:1px solid var(--border);
 }

@@ -577,6 +577,14 @@
           <span class="detail-key">Start Time</span>
           <span class="detail-val" id="modal-start">—</span>
         </div>
+        <div class="detail-row">
+          <span class="detail-key">Queue Position</span>
+          <span class="detail-val" id="modal-queue-pos">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-key">Est. Start</span>
+          <span class="detail-val" id="modal-est-start">—</span>
+        </div>
       </div>
       <div class="job-detail-group">
         <div class="group-label">Priority &amp; Reason</div>
@@ -596,8 +604,15 @@
           <div id="modal-dep-row" class="dep-chips"></div>
         </div>
       </div>
+      <div class="job-detail-group" id="modal-output-group">
+        <div class="group-label">Output Preview</div>
+        <div class="output-actions">
+          <button class="btn-action primary" id="modal-btn-output">📄 LOAD OUTPUT</button>
+        </div>
+        <pre id="modal-output-preview" class="modal-output-preview">Select a job and click LOAD OUTPUT to view recent stdout/stderr lines.</pre>
+      </div>
       <div class="job-actions">
-        <button class="btn-action primary" id="modal-btn-details">📋 DETAILS</button>
+        <button class="btn-action primary" id="modal-btn-details">↻ REFRESH</button>
         <button class="btn-action danger"  id="modal-btn-cancel">❌ CANCEL</button>
       </div>
     </div>
