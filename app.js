@@ -11,6 +11,7 @@ const $ = id => document.getElementById(id);
 // Config (persisted in localStorage)
 // ─────────────────────────────────────────
 const CFG_KEY = 'slurmSight_cfg';
+const RUNS_MODE_KEY = 'slurmSight_runs_open_mode';
 let cfg = {
   serverUrl:      'http://localhost:8787',
   refreshInterval: 5,
@@ -121,7 +122,17 @@ let usersPartitionFilter = 'ALL';
 let usersSearch  = '';
 let usersExpanded       = {};
 let usersJobNameExpanded = {};
-let serverCapabilities  = { enable_submit: false, enable_metrics: false };
+let runsSummaryRows = [];
+let runsSummarySort = { key: 'batch', direction: 'asc', type: 'string' };
+let runsSearch = '';
+let selectedBatch = '';
+let selectedRun = '';
+let selectedRunFile = '';
+let selectedTextFile = '';
+let selectedGroupHtml = '';
+let selectedGroupText = '';
+let runsOpenMode = localStorage.getItem(RUNS_MODE_KEY) || 'embed';
+let serverCapabilities  = { enable_submit: false, enable_metrics: false, enable_runs_browser: true };
 
 // ─────────────────────────────────────────
 // Search filter helper
@@ -161,6 +172,14 @@ function relTime(value) {
   if (diffSec < 3600) return Math.round(diffSec/60) + 'm ago';
   if (diffSec < 86400) return Math.round(diffSec/3600) + 'h ago';
   return Math.round(diffSec/86400) + 'd ago';
+}
+
+function formatEpoch(ts) {
+  const n = Number(ts || 0);
+  if (!n) return 'N/A';
+  const d = new Date(n * 1000);
+  if (isNaN(d)) return 'N/A';
+  return d.toLocaleString();
 }
 
 // ─────────────────────────────────────────
@@ -736,7 +755,7 @@ function setStatus(s) {
 // ─────────────────────────────────────────
 async function fetchServerCapabilities() {
   if (cfg.demoMode) {
-    serverCapabilities = { enable_submit: true, enable_metrics: false };
+    serverCapabilities = { enable_submit: true, enable_metrics: false, enable_runs_browser: true };
     updateSubmitVisibility();
     return;
   }
@@ -754,12 +773,400 @@ async function fetchServerCapabilities() {
 function updateSubmitVisibility() {
   const tab = document.querySelector('.tab[data-panel="submit"]');
   const metricsTab = document.querySelector('.tab[data-panel="metrics"]');
+  const runsTab = document.querySelector('.tab[data-panel="runs"]');
   if (tab) tab.style.display = serverCapabilities.enable_submit ? '' : 'none';
   if (metricsTab) metricsTab.style.display = serverCapabilities.enable_metrics ? '' : 'none';
+  if (runsTab) runsTab.style.display = serverCapabilities.enable_runs_browser === false ? 'none' : '';
   const notice = $('submit-disabled-notice');
   if (notice) notice.style.display = serverCapabilities.enable_submit ? 'none' : '';
   const form = $('submit-form-fields');
   if (form) form.style.display = serverCapabilities.enable_submit ? '' : 'none';
+}
+
+function getRunsViewUrl(batch, run, fileName) {
+  return cfg.serverUrl + '/api/runs/file/'
+    + encodeURIComponent(batch) + '/'
+    + encodeURIComponent(run) + '/'
+    + String(fileName || '').split('/').map(p => encodeURIComponent(p)).join('/');
+}
+
+function getRunsBatchViewUrl(batch, fileName) {
+  return cfg.serverUrl + '/api/runs/batch-file/'
+    + encodeURIComponent(batch) + '/'
+    + encodeURIComponent(fileName);
+}
+
+function setRunsCurrentFile(label) {
+  const el = $('runs-current-file');
+  if (el) el.textContent = label || 'No file selected';
+}
+
+function showRunsHtmlViewer(url) {
+  const frame = $('runs-viewer');
+  const textBox = $('runs-text-viewer');
+  if (textBox) textBox.style.display = 'none';
+  if (frame) {
+    frame.style.display = '';
+    frame.src = url || '';
+  }
+}
+
+function showRunsTextViewer(text) {
+  const frame = $('runs-viewer');
+  const textBox = $('runs-text-viewer');
+  if (frame) frame.style.display = 'none';
+  if (textBox) {
+    textBox.style.display = '';
+    textBox.textContent = text || '';
+  }
+}
+
+function renderRunsMeta(metadata) {
+  const meta = $('runs-meta');
+  if (!meta) return;
+  const cfgMeta = metadata && metadata.run_config && typeof metadata.run_config === 'object'
+    ? metadata.run_config
+    : null;
+  const manifest = metadata && metadata.manifest && typeof metadata.manifest === 'object'
+    ? metadata.manifest
+    : null;
+
+  const runName = cfgMeta && cfgMeta.run_name ? cfgMeta.run_name : 'N/A';
+  const runId = cfgMeta && cfgMeta.run_id ? cfgMeta.run_id : 'N/A';
+  const filesCount = manifest && Array.isArray(manifest.files) ? manifest.files.length : 'N/A';
+
+  meta.innerHTML = `
+    <div class="runs-meta-grid">
+      <div><span class="runs-meta-k">RUN NAME</span><span class="runs-meta-v">${esc(runName)}</span></div>
+      <div><span class="runs-meta-k">RUN ID</span><span class="runs-meta-v">${esc(runId)}</span></div>
+      <div><span class="runs-meta-k">MANIFEST FILES</span><span class="runs-meta-v">${esc(filesCount)}</span></div>
+    </div>`;
+}
+
+async function fetchRunMeta(batch, run) {
+  const meta = $('runs-meta');
+  if (!meta) return;
+  meta.innerHTML = '<div class="runs-meta-empty"><span class="spinner"></span> Loading metadata…</div>';
+  try {
+    const headers = cfg.authToken ? { Authorization: 'Bearer ' + cfg.authToken } : {};
+    const params = new URLSearchParams({ batch, run });
+    const r = await fetch(cfg.serverUrl + '/api/runs/meta?' + params.toString(), {
+      signal: AbortSignal.timeout(10000),
+      headers,
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      meta.innerHTML = '<div class="runs-meta-empty">Metadata unavailable.</div>';
+      return;
+    }
+    renderRunsMeta(data.metadata || {});
+  } catch (_) {
+    meta.innerHTML = '<div class="runs-meta-empty">Metadata unavailable.</div>';
+  }
+}
+
+function openSelectedRunHtml() {
+  let url = '';
+  if (selectedBatch && selectedRun && selectedRunFile) {
+    url = getRunsViewUrl(selectedBatch, selectedRun, selectedRunFile);
+    setRunsCurrentFile(`HTML: ${selectedRunFile}`);
+  } else if (selectedBatch && selectedGroupHtml) {
+    url = getRunsBatchViewUrl(selectedBatch, selectedGroupHtml);
+    setRunsCurrentFile(`GROUP HTML: ${selectedGroupHtml}`);
+  } else {
+    toast('Select a run or group HTML file first', 'warn', '⚠️');
+    return;
+  }
+  const frame = $('runs-viewer');
+  if (runsOpenMode === 'newtab') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  if (frame) showRunsHtmlViewer(url);
+}
+
+async function loadSelectedRunText() {
+  let endpoint = '';
+  if (selectedBatch && selectedRun && selectedTextFile) {
+    const params = new URLSearchParams({ batch: selectedBatch, run: selectedRun, file: selectedTextFile });
+    endpoint = cfg.serverUrl + '/api/runs/text?' + params.toString();
+    setRunsCurrentFile(`TEXT: ${selectedTextFile}`);
+  } else if (selectedBatch && selectedGroupText) {
+    const params = new URLSearchParams({ batch: selectedBatch, file: selectedGroupText });
+    endpoint = cfg.serverUrl + '/api/runs/batch-text?' + params.toString();
+    setRunsCurrentFile(`GROUP TEXT: ${selectedGroupText}`);
+  } else {
+    toast('Select a run or group text file first', 'warn', '⚠️');
+    return;
+  }
+  showRunsTextViewer('Loading text artifact...');
+  try {
+    const headers = cfg.authToken ? { Authorization: 'Bearer ' + cfg.authToken } : {};
+    const r = await fetch(endpoint, {
+      signal: AbortSignal.timeout(12000),
+      headers,
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      showRunsTextViewer('Could not load text artifact: ' + (data.err || 'Unknown error'));
+      return;
+    }
+    let content = data.content || '';
+    if (data.truncated) {
+      content += '\n\n---\nPreview truncated at 512 KiB.';
+    }
+    showRunsTextViewer(content);
+  } catch (e) {
+    showRunsTextViewer('Could not load text artifact: ' + e.message);
+  }
+}
+
+function renderGroupFiles(batch, groupFiles) {
+  const box = $('runs-group-files');
+  if (!box) return;
+  const htmlFiles = (groupFiles && groupFiles.html_files) || [];
+  const textFiles = (groupFiles && groupFiles.text_files) || [];
+
+  if (!htmlFiles.length && !textFiles.length) {
+    box.innerHTML = '<div class="runs-group-empty">No batch-level files.</div>';
+    return;
+  }
+
+  const htmlBtns = htmlFiles.map(fileName => {
+    const cls = selectedGroupHtml === fileName ? ' active' : '';
+    return `<button class="runs-file-btn runs-file-btn-group${cls}" data-ghtml="${esc(fileName)}">${esc(fileName)}</button>`;
+  }).join('');
+  const textBtns = textFiles.map(fileName => {
+    const cls = selectedGroupText === fileName ? ' active' : '';
+    return `<button class="runs-file-btn runs-file-btn-text${cls}" data-gtext="${esc(fileName)}">${esc(fileName)}</button>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="runs-files-label">BATCH HTML FILES</div>
+    <div class="runs-run-files">${htmlBtns || '<div class="runs-no-files">None</div>'}</div>
+    <div class="runs-files-label">BATCH TEXT FILES</div>
+    <div class="runs-run-files">${textBtns || '<div class="runs-no-files">None</div>'}</div>
+  `;
+
+  box.querySelectorAll('[data-ghtml]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedGroupHtml = btn.dataset.ghtml || '';
+      selectedGroupText = '';
+      selectedRun = '';
+      selectedRunFile = '';
+      selectedTextFile = '';
+      openSelectedRunHtml();
+      renderGroupFiles(batch, groupFiles);
+    });
+  });
+
+  box.querySelectorAll('[data-gtext]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedGroupText = btn.dataset.gtext || '';
+      selectedGroupHtml = '';
+      selectedRun = '';
+      selectedRunFile = '';
+      selectedTextFile = '';
+      loadSelectedRunText();
+      renderGroupFiles(batch, groupFiles);
+    });
+  });
+}
+
+function renderRunList(batch, runs) {
+  const list = $('runs-run-list');
+  const label = $('runs-selected-batch');
+  if (!list || !label) return;
+  label.textContent = 'RUNS: ' + batch;
+
+  if (!runs.length) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">🗂</div><div>No runs found in this batch.</div></div>';
+    return;
+  }
+
+  list.innerHTML = runs.map(run => {
+    const htmlItems = (run.html_files || []).map(fileName => {
+      const cls = (selectedRun === run.run && selectedRunFile === fileName) ? ' active' : '';
+      return `<button class="runs-file-btn${cls}" data-run="${esc(run.run)}" data-file="${esc(fileName)}">${esc(fileName)}</button>`;
+    }).join('') || '<div class="runs-no-files">No HTML files</div>';
+
+    const textItems = (run.text_files || []).map(fileName => {
+      const cls = (selectedRun === run.run && selectedTextFile === fileName) ? ' active' : '';
+      return `<button class="runs-file-btn runs-file-btn-text${cls}" data-run="${esc(run.run)}" data-tfile="${esc(fileName)}">${esc(fileName)}</button>`;
+    }).join('') || '<div class="runs-no-files">No text files</div>';
+
+    return `<article class="runs-run-card" data-run="${esc(run.run)}">
+      <div class="runs-run-hdr">
+        <div class="runs-run-title">${esc(run.run_name || run.run)}</div>
+        <div class="runs-run-flags">${run.completed ? '<span class="runs-flag done">COMPLETE</span>' : '<span class="runs-flag">IN PROGRESS</span>'}</div>
+      </div>
+      <div class="runs-run-sub">${esc(run.run_id || run.run)}</div>
+      <div class="runs-files-label">HTML</div>
+      <div class="runs-run-files">${htmlItems}</div>
+      <div class="runs-files-label">TEXT</div>
+      <div class="runs-run-files">${textItems}</div>
+    </article>`;
+  }).join('');
+
+  list.querySelectorAll('.runs-run-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const run = card.dataset.run;
+      if (!run || run === selectedRun) return;
+      selectedRun = run;
+      selectedRunFile = '';
+      selectedTextFile = '';
+      selectedGroupHtml = '';
+      selectedGroupText = '';
+      setRunsCurrentFile('No file selected');
+      showRunsHtmlViewer('');
+      fetchRunMeta(selectedBatch, selectedRun);
+      renderRunList(selectedBatch, runs);
+    });
+  });
+
+  list.querySelectorAll('.runs-file-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      selectedRun = btn.dataset.run || '';
+      selectedRunFile = btn.dataset.file || '';
+      selectedTextFile = '';
+      selectedGroupHtml = '';
+      selectedGroupText = '';
+      openSelectedRunHtml();
+      renderRunList(selectedBatch, runs);
+    });
+  });
+
+  list.querySelectorAll('.runs-file-btn[data-tfile]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      selectedRun = btn.dataset.run || '';
+      selectedTextFile = btn.dataset.tfile || '';
+      selectedRunFile = '';
+      selectedGroupHtml = '';
+      selectedGroupText = '';
+      loadSelectedRunText();
+      renderRunList(selectedBatch, runs);
+    });
+  });
+}
+
+async function fetchRunsForBatch(batch) {
+  const list = $('runs-run-list');
+  if (!list) return;
+  list.innerHTML = '<div class="empty-state"><span class="spinner"></span> Loading runs…</div>';
+  try {
+    const headers = cfg.authToken ? { Authorization: 'Bearer ' + cfg.authToken } : {};
+    const params = new URLSearchParams({ batch });
+    const r = await fetch(cfg.serverUrl + '/api/runs/list?' + params.toString(), {
+      signal: AbortSignal.timeout(15000),
+      headers,
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      list.innerHTML = `<div class="empty-state" style="color:var(--danger)">${esc(data.err || 'Could not load runs')}</div>`;
+      return;
+    }
+    const runs = data.runs || [];
+    const groupFiles = data.group_files || { html_files: [], text_files: [] };
+    if (!selectedRun || !runs.some(rn => rn.run === selectedRun)) {
+      selectedRun = runs.length ? runs[0].run : '';
+      selectedRunFile = '';
+      selectedTextFile = '';
+    }
+    if (selectedGroupHtml && !(groupFiles.html_files || []).includes(selectedGroupHtml)) selectedGroupHtml = '';
+    if (selectedGroupText && !(groupFiles.text_files || []).includes(selectedGroupText)) selectedGroupText = '';
+    renderGroupFiles(batch, groupFiles);
+    renderRunList(batch, runs);
+    if (selectedRun) fetchRunMeta(batch, selectedRun);
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state" style="color:var(--danger)">${esc(e.message)}</div>`;
+  }
+}
+
+function renderRunsSummary() {
+  const tbody = $('runs-summary-tbody');
+  if (!tbody) return;
+
+  const filter = buildFilter(runsSearch);
+  const visible = filter
+    ? runsSummaryRows.filter(r => matchesFilter(filter, r.batch))
+    : runsSummaryRows;
+
+  animNum('runs-stat-batches', visible.length);
+  animNum('runs-stat-runs', visible.reduce((s, r) => s + (parseInt(r.run_count, 10) || 0), 0));
+  animNum('runs-stat-completed', visible.reduce((s, r) => s + (parseInt(r.completed_count, 10) || 0), 0));
+  animNum('runs-stat-html', visible.reduce((s, r) => s + (parseInt(r.html_file_count, 10) || 0), 0));
+
+  if (!visible.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><div class="empty-icon">📁</div><div>No batch folders found.</div></div></td></tr>';
+    updateSortableHeaders('#runs-summary-table', runsSummarySort);
+    return;
+  }
+
+  const sorted = sortRows(visible, runsSummarySort, 'batch', 'string');
+  tbody.innerHTML = sorted.map(row => {
+    const active = row.batch === selectedBatch ? ' class="active"' : '';
+    const lastModTs = Number(row.last_modified) || 0;
+    const lastModDisplay = lastModTs ? relTime(new Date(lastModTs * 1000).toISOString()) : 'N/A';
+    return `<tr data-batch="${esc(row.batch)}"${active}>
+      <td title="${esc(row.batch)}">${esc(row.batch)}</td>
+      <td>${esc(row.run_count)}</td>
+      <td>${esc(row.completed_count)}</td>
+      <td title="${esc(formatEpoch(row.last_modified))}">${esc(lastModDisplay)}</td>
+    </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('tr[data-batch]').forEach(row => {
+    row.addEventListener('click', () => {
+      selectedBatch = row.dataset.batch || '';
+      selectedRun = '';
+      selectedRunFile = '';
+      selectedTextFile = '';
+      selectedGroupHtml = '';
+      selectedGroupText = '';
+      renderRunsSummary();
+      if (selectedBatch) fetchRunsForBatch(selectedBatch);
+    });
+  });
+
+  updateSortableHeaders('#runs-summary-table', runsSummarySort);
+}
+
+async function fetchRunsSummary() {
+  const tbody = $('runs-summary-tbody');
+  if (tbody) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><span class="spinner"></span> Loading…</div></td></tr>';
+  }
+  try {
+    const headers = cfg.authToken ? { Authorization: 'Bearer ' + cfg.authToken } : {};
+    const r = await fetch(cfg.serverUrl + '/api/runs/summary', {
+      signal: AbortSignal.timeout(15000),
+      headers,
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      if (tbody) {
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="4"><div class="empty-state" style="color:var(--danger)">${esc(data.err || 'Could not scan scratch')}</div></td></tr>`;
+      }
+      return;
+    }
+    runsSummaryRows = data.data || [];
+    if (!selectedBatch || !runsSummaryRows.some(rn => rn.batch === selectedBatch)) {
+      selectedBatch = runsSummaryRows.length ? runsSummaryRows[0].batch : '';
+      selectedRun = '';
+      selectedRunFile = '';
+      selectedTextFile = '';
+      selectedGroupHtml = '';
+      selectedGroupText = '';
+    }
+    renderRunsSummary();
+    if (selectedBatch) fetchRunsForBatch(selectedBatch);
+  } catch (e) {
+    if (tbody) {
+      tbody.innerHTML = `<tr class="empty-row"><td colspan="4"><div class="empty-state" style="color:var(--danger)">${esc(e.message)}</div></td></tr>`;
+    }
+  }
 }
 
 
@@ -1615,7 +2022,7 @@ function demoNextTick() {
 // ─────────────────────────────────────────
 // Keyboard shortcuts
 // ─────────────────────────────────────────
-const TAB_PANELS=['queue','share','info','gpu','cpu','history','users','settings','submit','metrics'];
+const TAB_PANELS=['queue','share','info','gpu','cpu','history','runs','users','settings','submit','metrics'];
 
 document.addEventListener('keydown', e => {
   const tag = e.target.tagName;
@@ -1661,6 +2068,7 @@ document.querySelectorAll('.tab').forEach(btn=>{
     else if(p==='gpu') fetchGpuNodes();
     else if(p==='cpu') fetchCpuNodes();
     else if(p==='history') fetchHistory();
+    else if(p==='runs') fetchRunsSummary();
     else if(p==='users') fetchUsersQueue();
     else if(p==='metrics') fetchMetrics();
   });
@@ -1675,8 +2083,13 @@ $('btn-refresh-info').onclick = fetchInfo;
 $('btn-refresh-gpu').onclick = fetchGpuNodes;
 $('btn-refresh-cpu').onclick = fetchCpuNodes;
 $('btn-refresh-history').onclick = fetchHistory;
+$('btn-refresh-runs').onclick = fetchRunsSummary;
 $('btn-refresh-users').onclick = fetchUsersQueue;
 $('users-search').oninput = function(){usersSearch=this.value;renderUsersPanel(usersRows);};
+$('runs-search').oninput = function(){runsSearch=this.value;renderRunsSummary();};
+$('runs-open-mode').onchange = function(){runsOpenMode=this.value;localStorage.setItem(RUNS_MODE_KEY, runsOpenMode);};
+$('btn-runs-open-selected').onclick = openSelectedRunHtml;
+$('btn-runs-load-text').onclick = loadSelectedRunText;
 $('share-filter').oninput = function(){shareFilter=this.value;if(shareRaw)renderShareCards(shareRaw);};
 $('share-sort-key').onchange = function(){shareSort.key=this.value;if(shareRaw)renderShareCards(shareRaw);};
 $('btn-share-sort-dir').onclick=()=>{shareSort.direction=shareSort.direction==='asc'?'desc':'asc';if(shareRaw)renderShareCards(shareRaw);};
@@ -1743,6 +2156,7 @@ $('cfg-sounds').checked=cfg.sounds;
 if($('cfg-notif')) $('cfg-notif').checked=cfg.desktopNotif||false;
 if($('cfg-webhook')) $('cfg-webhook').value=cfg.webhookUrl||'';
 if($('cfg-auth-token')) $('cfg-auth-token').value=cfg.authToken||'';
+if($('runs-open-mode')) $('runs-open-mode').value=runsOpenMode;
 syncShareSortControls();
 if(cfg.demoMode){$('btn-demo').classList.add('active');$('btn-live').classList.remove('active');}
 else{$('btn-live').classList.add('active');$('btn-demo').classList.remove('active');}
@@ -1761,6 +2175,7 @@ setupGpuTypeBreakdown();
 setupCpuSorting();
 setupCpuTypeBreakdown();
 setupHistorySorting();
+setupTableSorting('#runs-summary-table', runsSummarySort, renderRunsSummary);
 startRefreshCycle();
 updateSubmitVisibility();
 if(!cfg.demoMode) fetchServerCapabilities();

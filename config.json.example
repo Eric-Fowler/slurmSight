@@ -21,6 +21,11 @@
   "metrics_db": "metrics.db",
   "metrics_interval": 60,
 
+  "enable_runs_browser": true,
+  "_runs_browser_help": "Enable /api/runs/* endpoints to browse run folders and load HTML artifacts from scratch_root.",
+  "scratch_root": "/storage/home/hcoda1/5/efowler34/scratch",
+  "_scratch_root_help": "Root directory for run browser. Browsing is locked inside this path.",
+
   "rate_limit_scancel": 10,
   "_rate_limit_help": "Maximum scancel API calls per IP address per minute. 0 = unlimited."
 }

@@ -39,6 +39,7 @@
     <button class="tab" data-panel="gpu">🎮 GPU NODES</button>
     <button class="tab" data-panel="cpu">🧠 CPU NODES</button>
     <button class="tab" data-panel="history">📜 HISTORY</button>
+    <button class="tab" data-panel="runs">📁 RUNS</button>
     <button class="tab" data-panel="users">👥 USERS</button>
     <button class="tab" data-panel="submit" style="display:none">🚀 SUBMIT</button>
     <button class="tab" data-panel="metrics" style="display:none">📈 METRICS</button>
@@ -300,6 +301,69 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Runs Panel ── -->
+    <div id="panel-runs" class="panel">
+      <div class="panel-hdr">
+        <h2>SCRATCH RUN BROWSER</h2>
+        <div class="panel-hdr-right">
+          <input type="text" id="runs-search" class="search-input" placeholder="🔎 Filter batches…" aria-label="Search runs"/>
+          <select id="runs-open-mode" class="btn-sm" aria-label="Open mode">
+            <option value="embed">OPEN: EMBEDDED</option>
+            <option value="newtab">OPEN: NEW TAB</option>
+          </select>
+          <button class="btn-sm" id="btn-refresh-runs">↻ Refresh</button>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card total"><div class="stat-value" id="runs-stat-batches">0</div><div class="stat-label">BATCHES</div></div>
+        <div class="stat-card running"><div class="stat-value" id="runs-stat-runs">0</div><div class="stat-label">RUNS</div></div>
+        <div class="stat-card pending"><div class="stat-value" id="runs-stat-completed">0</div><div class="stat-label">COMPLETED</div></div>
+        <div class="stat-card other"><div class="stat-value" id="runs-stat-html">0</div><div class="stat-label">HTML FILES</div></div>
+      </div>
+
+      <div class="runs-layout">
+        <section class="runs-col runs-col-summary">
+          <div class="runs-col-hdr">BATCH SUMMARY</div>
+          <div class="table-outer runs-summary-wrap">
+            <div class="table-container">
+              <table id="runs-summary-table">
+                <thead><tr>
+                  <th class="sortable active-sort" data-sort-key="batch" data-sort-type="string" data-sort-indicator="↑" aria-sort="ascending">BATCH</th>
+                  <th class="sortable" data-sort-key="run_count" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">RUNS</th>
+                  <th class="sortable" data-sort-key="completed_count" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">COMPLETED</th>
+                  <th class="sortable" data-sort-key="last_modified" data-sort-type="number" data-sort-indicator="↕" aria-sort="none">LAST MOD</th>
+                </tr></thead>
+                <tbody id="runs-summary-tbody">
+                  <tr class="empty-row"><td colspan="4"><div class="empty-state"><div class="empty-icon">📁</div><div>Click Refresh to scan scratch runs.</div></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="runs-col runs-col-detail">
+          <div class="runs-col-hdr" id="runs-selected-batch">RUNS</div>
+          <div id="runs-group-files" class="runs-group-files"></div>
+          <div id="runs-run-list" class="runs-run-list">
+            <div class="empty-state"><div class="empty-icon">🗂</div><div>Select a batch to view runs.</div></div>
+          </div>
+          <div id="runs-meta" class="runs-meta"></div>
+        </section>
+
+        <section class="runs-col runs-col-viewer">
+          <div class="runs-col-hdr">HTML VIEWER</div>
+          <div class="runs-viewer-actions">
+            <button class="btn-sm" id="btn-runs-open-selected">Open Selected</button>
+            <button class="btn-sm" id="btn-runs-load-text">Load Text</button>
+          </div>
+          <div id="runs-current-file" class="runs-current-file">No file selected</div>
+          <iframe id="runs-viewer" title="Run HTML viewer"></iframe>
+          <pre id="runs-text-viewer" class="runs-text-viewer" style="display:none"></pre>
+        </section>
       </div>
     </div>
 
