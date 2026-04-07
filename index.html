@@ -460,6 +460,7 @@
     <div id="panel-metrics" class="panel">
       <div class="panel-hdr"><h2>QUEUE METRICS</h2></div>
       <div class="settings-content">
+        <div id="metrics-partitions" class="metrics-partitions"></div>
         <p id="metrics-nodata" style="color:var(--text-dim);padding:16px 0">Metrics not available. Set <code>enable_metrics: true</code> in <code>config.json</code>.</p>
         <canvas id="metrics-canvas" style="width:100%;height:220px;display:block;border-radius:8px;background:var(--surf)"></canvas>
       </div>
@@ -489,6 +490,16 @@
             <span id="cfg-test-result" class="setting-help">Uses the currently entered URL and token.</span>
           </div>
         </div>
+
+          <div class="setting-group">
+            <label>SERVER CONFIG FILE</label>
+            <div class="setting-row">
+              <button class="btn-sm" id="btn-load-server-config">LOAD CONFIG</button>
+              <button class="btn-sm" id="btn-save-server-config">SAVE CONFIG</button>
+              <span id="server-config-status" class="setting-help">Edit server config.json and save. Restart server afterward.</span>
+            </div>
+            <textarea id="cfg-server-json" class="cfg-json-editor" spellcheck="false" placeholder="Click LOAD CONFIG to edit server config.json"></textarea>
+          </div>
 
         <div class="setting-group">
           <label>REFRESH INTERVAL</label>

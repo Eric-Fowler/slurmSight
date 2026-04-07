@@ -117,6 +117,7 @@ def load_config(path=None):
 
 
 CONFIG = load_config(_find_config_path())
+CONFIG_PATH = _find_config_path() or os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 PORT = CONFIG["port"]
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -188,6 +189,17 @@ def init_metrics_db():
                 total   INTEGER NOT NULL DEFAULT 0
             )
         """)
+        _metrics_conn.execute("""
+            CREATE TABLE IF NOT EXISTS queue_partition_snapshots (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts        INTEGER NOT NULL,
+                partition TEXT NOT NULL,
+                running   INTEGER NOT NULL DEFAULT 0,
+                pending   INTEGER NOT NULL DEFAULT 0,
+                other     INTEGER NOT NULL DEFAULT 0,
+                total     INTEGER NOT NULL DEFAULT 0
+            )
+        """)
     print(f"📊  Metrics DB: {db_path}")
 
 
@@ -199,6 +211,22 @@ def record_snapshot(running: int, pending: int, other: int, total: int):
             _metrics_conn.execute(
                 "INSERT INTO queue_snapshots (ts, running, pending, other, total) VALUES (?,?,?,?,?)",
                 (int(time.time()), running, pending, other, total),
+            )
+
+
+def record_partition_snapshots(partitions: dict):
+    if _metrics_conn is None or not partitions:
+        return
+    ts = int(time.time())
+    rows = [
+        (ts, partition, values.get("running", 0), values.get("pending", 0), values.get("other", 0), values.get("total", 0))
+        for partition, values in partitions.items()
+    ]
+    with _metrics_lock:
+        with _metrics_conn:
+            _metrics_conn.executemany(
+                "INSERT INTO queue_partition_snapshots (ts, partition, running, pending, other, total) VALUES (?,?,?,?,?,?)",
+                rows,
             )
 
 
@@ -216,22 +244,132 @@ def get_snapshots(limit: int = 1440) -> list:
             for r in reversed(rows)]
 
 
+def get_partition_snapshots(limit: int = 5000) -> dict:
+    if _metrics_conn is None:
+        return {}
+    with _metrics_lock:
+        cur = _metrics_conn.execute(
+            "SELECT ts, partition, running, pending, other, total "
+            "FROM queue_partition_snapshots ORDER BY ts DESC LIMIT ?",
+            (limit,),
+        )
+        rows = cur.fetchall()
+    grouped = defaultdict(list)
+    for ts, partition, running, pending, other, total in reversed(rows):
+        grouped[partition].append({
+            "ts": ts,
+            "running": running,
+            "pending": pending,
+            "other": other,
+            "total": total,
+        })
+    return dict(grouped)
+
+
 def _metrics_poller():
     interval = max(10, int(CONFIG["metrics_interval"]))
     while True:
         time.sleep(interval)
-        result = run_slurm(["squeue", "--me", "--noheader", "--format=%T"], timeout=20)
+        result = run_slurm(["squeue", "--me", "--noheader", "--format=%P\t%T"], timeout=20)
         if result["ok"]:
-            states = [line.strip() for line in result["out"].splitlines() if line.strip()]
-            running = sum(1 for s in states if s == "RUNNING")
-            pending = sum(1 for s in states if s == "PENDING")
-            other   = len(states) - running - pending
-            record_snapshot(running, pending, other, len(states))
+            partition_counts = defaultdict(lambda: {"running": 0, "pending": 0, "other": 0, "total": 0})
+            running = pending = other = total = 0
+            for line in result["out"].splitlines():
+                if not line.strip():
+                    continue
+                part, state = (line.split("\t", 1) + [""])[:2]
+                part = (part or "unknown").strip()
+                state = (state or "").strip()
+                bucket = partition_counts[part]
+                bucket["total"] += 1
+                total += 1
+                if state == "RUNNING":
+                    bucket["running"] += 1
+                    running += 1
+                elif state == "PENDING":
+                    bucket["pending"] += 1
+                    pending += 1
+                else:
+                    bucket["other"] += 1
+                    other += 1
+            record_snapshot(running, pending, other, total)
+            record_partition_snapshots(partition_counts)
 
 
 if CONFIG["enable_metrics"]:
     init_metrics_db()
     threading.Thread(target=_metrics_poller, daemon=True, name="metrics-poller").start()
+
+
+def get_editable_config() -> dict:
+    data = {}
+    if os.path.isfile(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data = loaded
+        except Exception:
+            data = {}
+    result = {}
+    for key, default in DEFAULTS.items():
+        result[key] = data.get(key, CONFIG.get(key, default))
+    return result
+
+
+def _cast_config_value(key: str, value):
+    if key not in DEFAULTS:
+        raise ValueError(f"Unsupported config key: {key}")
+    default = DEFAULTS[key]
+    if isinstance(default, bool):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lv = value.strip().lower()
+            if lv in {"1", "true", "yes", "on"}:
+                return True
+            if lv in {"0", "false", "no", "off"}:
+                return False
+        raise ValueError(f"Config key {key} must be boolean")
+    if isinstance(default, int):
+        try:
+            return int(value)
+        except Exception as e:
+            raise ValueError(f"Config key {key} must be integer") from e
+    return str(value)
+
+
+def write_editable_config(new_config: dict) -> dict:
+    if not isinstance(new_config, dict):
+        return {"ok": False, "err": "config must be a JSON object"}
+
+    normalized = {}
+    for key in DEFAULTS:
+        source_val = new_config.get(key, CONFIG.get(key, DEFAULTS[key]))
+        try:
+            normalized[key] = _cast_config_value(key, source_val)
+        except ValueError as e:
+            return {"ok": False, "err": str(e)}
+
+    if not (1 <= int(normalized["port"]) <= 65535):
+        return {"ok": False, "err": "port must be between 1 and 65535"}
+    if int(normalized["metrics_interval"]) < 10:
+        return {"ok": False, "err": "metrics_interval must be at least 10 seconds"}
+    if int(normalized["rate_limit_scancel"]) < 0:
+        return {"ok": False, "err": "rate_limit_scancel must be >= 0"}
+
+    os.makedirs(os.path.dirname(os.path.abspath(CONFIG_PATH)), exist_ok=True)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(normalized, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+    return {
+        "ok": True,
+        "path": CONFIG_PATH,
+        "config": normalized,
+        "restart_required": True,
+        "note": "Config file saved. Restart server.py to apply all changes.",
+    }
 
 # ──────────────────────────────────────────────────────────────
 # Slurm command helpers
@@ -960,7 +1098,11 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
                     404,
                 )
                 return
-            self._send_json({"ok": True, "data": get_snapshots()})
+            self._send_json({
+                "ok": True,
+                "data": get_snapshots(),
+                "partitions": get_partition_snapshots(),
+            })
 
         elif path == "/api/config":
             self._send_json({"ok": True, "config": {
@@ -970,6 +1112,13 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
                 "enable_runs_browser": _is_truthy(CONFIG.get("enable_runs_browser", True)),
                 "slurm_available":  SLURM_AVAILABLE,
             }})
+
+        elif path == "/api/config-file":
+            self._send_json({
+                "ok": True,
+                "path": CONFIG_PATH,
+                "config": get_editable_config(),
+            })
 
         else:
             self._send_json({"ok": False, "err": "Not found"}, 404)
@@ -1011,6 +1160,17 @@ class SlurmSightHandler(http.server.BaseHTTPRequestHandler):
                 body = self.rfile.read(content_len).decode("utf-8")
                 params = json.loads(body)
                 self._send_json(submit_job(params))
+            except Exception as e:
+                self._send_json({"ok": False, "err": str(e)}, 400)
+
+        elif path == "/api/config-file":
+            try:
+                content_len = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_len).decode("utf-8")
+                payload = json.loads(body) if body.strip() else {}
+                config_obj = payload.get("config") if isinstance(payload, dict) else None
+                result = write_editable_config(config_obj)
+                self._send_json(result, status=200 if result.get("ok") else 400)
             except Exception as e:
                 self._send_json({"ok": False, "err": str(e)}, 400)
 

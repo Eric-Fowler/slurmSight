@@ -143,6 +143,7 @@ let activePanel = 'queue';
 let shareWarnThreshold = 0.6;
 let shareCriticalThreshold = 0.3;
 let submitTemplates = [];
+let metricsPartition = 'ALL';
 try {
   const savedThresholds = JSON.parse(localStorage.getItem(SHARE_THRESH_KEY) || '{}');
   shareWarnThreshold = Math.max(0, Math.min(1, Number(savedThresholds.warn) || shareWarnThreshold));
@@ -319,6 +320,7 @@ function collectUiState() {
     gpuSort: encodeSortState(gpuSort),
     cpuSort: encodeSortState(cpuSort),
     runsSummarySort: encodeSortState(runsSummarySort),
+    metricsPartition,
     shareSortKey: shareSort.key,
     shareSortDir: shareSort.direction,
   };
@@ -336,6 +338,7 @@ function syncUrlState() {
   if (state.runsSearch) params.set('runs', state.runsSearch);
   if (state.selectedBatch) params.set('batch', state.selectedBatch);
   if (state.runsOpenMode && state.runsOpenMode !== 'embed') params.set('runsMode', state.runsOpenMode);
+  if (state.metricsPartition && state.metricsPartition !== 'ALL') params.set('metricsPart', state.metricsPartition);
   params.set('queueSort', state.queueSort);
   params.set('historySort', state.historySort);
   params.set('infoSort', state.infoSort);
@@ -376,6 +379,7 @@ function readInitialUiState() {
     if (params.has('gpuSort')) state.gpuSort = params.get('gpuSort');
     if (params.has('cpuSort')) state.cpuSort = params.get('cpuSort');
     if (params.has('runsSort')) state.runsSummarySort = params.get('runsSort');
+    if (params.has('metricsPart')) state.metricsPartition = params.get('metricsPart') || 'ALL';
     if (params.has('shareSort')) {
       const [key, direction] = String(params.get('shareSort') || '').split(':');
       if (key) {
@@ -398,6 +402,7 @@ function applyInitialUiState() {
   runsSearch = state.runsSearch || '';
   selectedBatch = state.selectedBatch || '';
   runsOpenMode = state.runsOpenMode || runsOpenMode;
+  metricsPartition = state.metricsPartition || 'ALL';
   applySortState(queueSort, state.queueSort, { type: 'number' });
   applySortState(historySort, state.historySort, { type: 'number' });
   applySortState(infoSort, state.infoSort, { type: 'string' });
@@ -1230,6 +1235,94 @@ async function testServerConnection() {
       btn.disabled = false;
       btn.textContent = 'TEST CONNECTION';
     }
+  }
+}
+
+function getSettingsConnection() {
+  const serverUrl = (($('cfg-server') || {}).value || cfg.serverUrl || '').trim();
+  const authToken = (($('cfg-auth-token') || {}).value || cfg.authToken || '').trim();
+  return {
+    serverUrl: serverUrl.replace(/\/$/, ''),
+    headers: authToken ? { Authorization: 'Bearer ' + authToken } : {},
+  };
+}
+
+async function loadServerConfigFile() {
+  const status = $('server-config-status');
+  const editor = $('cfg-server-json');
+  const btn = $('btn-load-server-config');
+  if (!editor) return;
+  const { serverUrl, headers } = getSettingsConnection();
+  if (!serverUrl) {
+    if (status) { status.className = 'setting-help err'; status.textContent = 'Set SERVER URL first.'; }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'LOADING…'; }
+  if (status) { status.className = 'setting-help'; status.textContent = 'Loading server config…'; }
+  try {
+    const r = await fetch(serverUrl + '/api/config-file', { signal: AbortSignal.timeout(8000), headers });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.err || `HTTP ${r.status}`);
+    editor.value = JSON.stringify(data.config || {}, null, 2);
+    if (status) {
+      status.className = 'setting-help ok';
+      status.textContent = `Loaded ${data.path || 'config.json'}`;
+    }
+  } catch (e) {
+    if (status) {
+      status.className = 'setting-help err';
+      status.textContent = 'Load failed: ' + (e.message || e);
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'LOAD CONFIG'; }
+  }
+}
+
+async function saveServerConfigFile() {
+  const status = $('server-config-status');
+  const editor = $('cfg-server-json');
+  const btn = $('btn-save-server-config');
+  if (!editor) return;
+  const { serverUrl, headers } = getSettingsConnection();
+  if (!serverUrl) {
+    if (status) { status.className = 'setting-help err'; status.textContent = 'Set SERVER URL first.'; }
+    return;
+  }
+  let configObj;
+  try {
+    configObj = JSON.parse(editor.value || '{}');
+  } catch (e) {
+    if (status) {
+      status.className = 'setting-help err';
+      status.textContent = 'JSON parse error: ' + (e.message || e);
+    }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'SAVING…'; }
+  if (status) { status.className = 'setting-help'; status.textContent = 'Saving server config…'; }
+  try {
+    const r = await fetch(serverUrl + '/api/config-file', {
+      method: 'POST',
+      signal: AbortSignal.timeout(10000),
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ config: configObj }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.err || `HTTP ${r.status}`);
+    editor.value = JSON.stringify(data.config || configObj, null, 2);
+    if (status) {
+      status.className = data.restart_required ? 'setting-help warn' : 'setting-help ok';
+      status.textContent = data.note || 'Config saved.';
+    }
+    toast('Server config saved', 'success', '💾');
+  } catch (e) {
+    if (status) {
+      status.className = 'setting-help err';
+      status.textContent = 'Save failed: ' + (e.message || e);
+    }
+    toast('Config save failed', 'danger', '❌');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'SAVE CONFIG'; }
   }
 }
 
@@ -2329,9 +2422,14 @@ async function submitJob() {
 async function fetchMetrics() {
   const canvas = $('metrics-canvas');
   const noData = $('metrics-nodata');
+  const partitionBox = $('metrics-partitions');
   if (!canvas) return;
   if (cfg.demoMode) {
-    if(noData) noData.textContent = 'Metrics not available in demo mode.';
+    if(noData) {
+      noData.style.display = '';
+      noData.textContent = 'Metrics not available in demo mode.';
+    }
+    if (partitionBox) partitionBox.innerHTML = '';
     return;
   }
   try {
@@ -2339,22 +2437,59 @@ async function fetchMetrics() {
     const r = await fetch(cfg.serverUrl+'/api/metrics', { signal:AbortSignal.timeout(8000), headers });
     const data = await r.json();
     if (!data.ok || !data.data || !data.data.length) {
-      if(noData) noData.textContent = data.err || 'No metrics data yet.';
+      if(noData) {
+        noData.style.display = '';
+        noData.textContent = data.err || 'No metrics data yet.';
+      }
+      if (partitionBox) partitionBox.innerHTML = '';
       return;
     }
     if(noData) noData.style.display = 'none';
-    renderMetricsChart(canvas, data.data);
+    renderMetricsPartitions(data.partitions || {});
+    const partitionData = metricsPartition === 'ALL'
+      ? data.data
+      : ((data.partitions || {})[metricsPartition] || []);
+    renderMetricsChart(canvas, partitionData, metricsPartition);
   } catch(e) {
-    if(noData) noData.textContent = 'Could not load metrics: '+e.message;
+    if(noData) {
+      noData.style.display = '';
+      noData.textContent = 'Could not load metrics: '+e.message;
+    }
   }
 }
 
-function renderMetricsChart(canvas, data) {
+function renderMetricsPartitions(partitions) {
+  const box = $('metrics-partitions');
+  if (!box) return;
+  const names = ['ALL', ...Object.keys(partitions || {}).sort((a, b) => a.localeCompare(b))];
+  if (!names.includes(metricsPartition)) metricsPartition = 'ALL';
+  box.innerHTML = names.map(name => {
+    const active = metricsPartition === name ? ' active' : '';
+    const count = name === 'ALL' ? '' : `<span class="counts">${(partitions[name] || []).length}</span>`;
+    return `<button class="gpu-type-chip${active}" data-metrics-part="${esc(name)}">${esc(name)}${count}</button>`;
+  }).join('');
+  box.querySelectorAll('[data-metrics-part]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      metricsPartition = btn.dataset.metricsPart || 'ALL';
+      persistUiState();
+      fetchMetrics();
+    });
+  });
+}
+
+function renderMetricsChart(canvas, data, label = 'ALL') {
   const W = canvas.offsetWidth || 600, H = canvas.offsetHeight || 200;
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   const isDark = document.documentElement.dataset.theme !== 'light';
   ctx.clearRect(0,0,W,H);
+  if (!data || !data.length) {
+    ctx.fillStyle = isDark ? '#8ca4bc' : '#48627b';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`No metrics for ${label}`, W / 2, H / 2);
+    return;
+  }
   const pad = {top:16, right:16, bottom:32, left:44};
   const cw = W - pad.left - pad.right, ch = H - pad.top - pad.bottom;
   const maxVal = Math.max(...data.map(d=>d.total), 1);
@@ -2381,7 +2516,7 @@ function renderMetricsChart(canvas, data) {
   ctx.fillText(maxVal, pad.left-4, pad.top+6);
   ctx.fillText('0', pad.left-4, pad.top+ch);
   // Legend
-  const items=[['TOTAL','#00e5ff'],['PENDING','#ffcc00'],['RUNNING','#00ff9d']];
+  const items=[[label === 'ALL' ? 'TOTAL QUEUE' : label,'#00e5ff'],['PENDING','#ffcc00'],['RUNNING','#00ff9d']];
   items.forEach(([label,color],i)=>{
     const lx=pad.left+i*90, ly=pad.top-2;
     ctx.fillStyle=color; ctx.fillRect(lx,ly,12,8);
@@ -2798,6 +2933,10 @@ const submitBtn=$('btn-submit-job');
 if(submitBtn) submitBtn.onclick=submitJob;
 const testConnBtn = $('btn-test-connection');
 if (testConnBtn) testConnBtn.onclick = testServerConnection;
+const loadCfgBtn = $('btn-load-server-config');
+if (loadCfgBtn) loadCfgBtn.onclick = loadServerConfigFile;
+const saveCfgBtn = $('btn-save-server-config');
+if (saveCfgBtn) saveCfgBtn.onclick = saveServerConfigFile;
 const submitTemplateLoadBtn = $('btn-submit-template-load');
 if (submitTemplateLoadBtn) submitTemplateLoadBtn.onclick = loadSubmitTemplate;
 const submitTemplateSaveBtn = $('btn-submit-template-save');
