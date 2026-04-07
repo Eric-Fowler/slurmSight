@@ -14,6 +14,7 @@ const CFG_KEY = 'slurmSight_cfg';
 const RUNS_MODE_KEY = 'slurmSight_runs_open_mode';
 const UI_STATE_KEY = 'slurmSight_ui_state';
 const SHARE_THRESH_KEY = 'slurmSight_share_thresholds';
+const SUBMIT_TEMPLATES_KEY = 'slurmSight_submit_templates';
 let cfg = {
   serverUrl:      'http://localhost:8787',
   refreshInterval: 5,
@@ -141,10 +142,15 @@ let modalRefreshTimer = null;
 let activePanel = 'queue';
 let shareWarnThreshold = 0.6;
 let shareCriticalThreshold = 0.3;
+let submitTemplates = [];
 try {
   const savedThresholds = JSON.parse(localStorage.getItem(SHARE_THRESH_KEY) || '{}');
   shareWarnThreshold = Math.max(0, Math.min(1, Number(savedThresholds.warn) || shareWarnThreshold));
   shareCriticalThreshold = Math.max(0, Math.min(1, Number(savedThresholds.critical) || shareCriticalThreshold));
+} catch (_) {}
+try {
+  const savedTemplates = JSON.parse(localStorage.getItem(SUBMIT_TEMPLATES_KEY) || '[]');
+  if (Array.isArray(savedTemplates)) submitTemplates = savedTemplates;
 } catch (_) {}
 
 // ─────────────────────────────────────────
@@ -385,8 +391,99 @@ function saveShareThresholds() {
   localStorage.setItem(SHARE_THRESH_KEY, JSON.stringify({ warn: shareWarnThreshold, critical: shareCriticalThreshold }));
 }
 
-function classifyFairshare(fairShare) {
-  const value = Number(fairShare) || 0;
+function saveSubmitTemplates() {
+  localStorage.setItem(SUBMIT_TEMPLATES_KEY, JSON.stringify(submitTemplates));
+}
+
+function getSubmitFormValues() {
+  return {
+    script: (($('sub-script') || {}).value || '').trim(),
+    name: (($('sub-name') || {}).value || '').trim(),
+    partition: (($('sub-partition') || {}).value || '').trim(),
+    cores: (($('sub-cores') || {}).value || '').trim(),
+    walltime: (($('sub-walltime') || {}).value || '').trim(),
+    mem: (($('sub-mem') || {}).value || '').trim(),
+  };
+}
+
+function applySubmitFormValues(values = {}) {
+  if ($('sub-script')) $('sub-script').value = values.script || '';
+  if ($('sub-name')) $('sub-name').value = values.name || '';
+  if ($('sub-partition')) $('sub-partition').value = values.partition || '';
+  if ($('sub-cores')) $('sub-cores').value = values.cores || '';
+  if ($('sub-walltime')) $('sub-walltime').value = values.walltime || '';
+  if ($('sub-mem')) $('sub-mem').value = values.mem || '';
+}
+
+function renderSubmitTemplates() {
+  const select = $('submit-template-select');
+  if (!select) return;
+  const current = select.value || '';
+  select.innerHTML = '<option value="">Saved templates…</option>' + submitTemplates
+    .slice()
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }))
+    .map(template => `<option value="${esc(template.name)}">${esc(template.name)}</option>`)
+    .join('');
+  if (current && submitTemplates.some(t => t.name === current)) select.value = current;
+}
+
+function loadSubmitTemplate() {
+  const select = $('submit-template-select');
+  const name = select ? select.value : '';
+  if (!name) {
+    toast('Choose a saved template first', 'warn', '⚠️');
+    return;
+  }
+  const template = submitTemplates.find(item => item.name === name);
+  if (!template) return;
+  applySubmitFormValues(template.values || {});
+  toast(`Loaded template ${name}`, 'info', '📥', 1800);
+}
+
+function saveCurrentAsSubmitTemplate() {
+  const values = getSubmitFormValues();
+  if (!values.script) {
+    toast('Fill in the submit form before saving a template', 'warn', '⚠️');
+    return;
+  }
+  const existingName = ($('submit-template-select') || {}).value || '';
+  const rawName = prompt('Template name:', existingName || values.name || values.script.split('/').pop() || 'job-template');
+  const name = String(rawName || '').trim();
+  if (!name) return;
+  submitTemplates = submitTemplates.filter(item => item.name !== name);
+  submitTemplates.push({ name, values });
+  saveSubmitTemplates();
+  renderSubmitTemplates();
+  if ($('submit-template-select')) $('submit-template-select').value = name;
+  toast(`Saved template ${name}`, 'success', '💾', 1800);
+}
+
+function deleteSelectedSubmitTemplate() {
+  const select = $('submit-template-select');
+  const name = select ? select.value : '';
+  if (!name) {
+    toast('Choose a template to delete', 'warn', '⚠️');
+    return;
+  }
+  submitTemplates = submitTemplates.filter(item => item.name !== name);
+  saveSubmitTemplates();
+  renderSubmitTemplates();
+  toast(`Deleted template ${name}`, 'info', '🗑', 1800);
+}
+
+function hasNoFairshareData(entry) {
+  if (!entry || typeof entry !== 'object') return false;
+  const rawShares = Number(entry.rawShares ?? entry.shares ?? 0) || 0;
+  const normShares = Number(entry.normShares ?? 0) || 0;
+  const rawUsage = Number(entry.rawUsage ?? 0) || 0;
+  const effUse = Number(entry.effUse ?? 0) || 0;
+  const fairShare = Number(entry.fairShare ?? 0) || 0;
+  return rawShares === 0 && normShares === 0 && rawUsage === 0 && effUse === 0 && fairShare === 0;
+}
+
+function classifyFairshare(entry) {
+  if (hasNoFairshareData(entry)) return 'ok';
+  const value = Number(entry && typeof entry === 'object' ? entry.fairShare : entry) || 0;
   if (value < shareCriticalThreshold) return 'critical';
   if (value < shareWarnThreshold) return 'warn';
   return 'ok';
@@ -1040,6 +1137,55 @@ async function fetchServerCapabilities() {
       updateSubmitVisibility();
     }
   } catch(_) {}
+}
+
+async function testServerConnection() {
+  const btn = $('btn-test-connection');
+  const result = $('cfg-test-result');
+  const serverUrl = (($('cfg-server') || {}).value || cfg.serverUrl || '').trim();
+  const authToken = (($('cfg-auth-token') || {}).value || '').trim();
+  if (!serverUrl) {
+    if (result) {
+      result.className = 'setting-help err';
+      result.textContent = 'Enter a server URL first.';
+    }
+    return;
+  }
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'TESTING…';
+  }
+  if (result) {
+    result.className = 'setting-help';
+    result.textContent = 'Checking server status…';
+  }
+  try {
+    const headers = authToken ? { Authorization: 'Bearer ' + authToken } : {};
+    const r = await fetch(serverUrl.replace(/\/$/, '') + '/api/slurm_status', {
+      signal: AbortSignal.timeout(5000),
+      headers,
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) {
+      throw new Error(data.err || `HTTP ${r.status}`);
+    }
+    if (result) {
+      result.className = 'setting-help ok';
+      result.textContent = data.available
+        ? 'Connected. Slurm commands are available on the server.'
+        : 'Connected, but Slurm commands are not available on the server PATH.';
+    }
+  } catch (e) {
+    if (result) {
+      result.className = 'setting-help err';
+      result.textContent = 'Connection test failed: ' + (e.message || e);
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'TEST CONNECTION';
+    }
+  }
 }
 
 function updateSubmitVisibility() {
@@ -2089,7 +2235,8 @@ async function fetchUsersQueue() {
 async function submitJob() {
   const btn = $('btn-submit-job');
   const result = $('submit-result');
-  const script = ($('sub-script')||{}).value||'';
+  const params = getSubmitFormValues();
+  const script = params.script;
   if (!script.trim()) { toast('Script path is required', 'warn', '⚠️'); return; }
   btn.disabled = true; btn.textContent = '⏳ SUBMITTING…';
   if (result) { result.style.display='none'; result.className='submit-result'; }
@@ -2101,14 +2248,6 @@ async function submitJob() {
   }
   try {
     const headers = { 'Content-Type':'application/json', ...(cfg.authToken?{Authorization:'Bearer '+cfg.authToken}:{}) };
-    const params = {
-      script:    script,
-      partition: ($('sub-partition')||{}).value||'',
-      cores:     ($('sub-cores')||{}).value||'',
-      walltime:  ($('sub-walltime')||{}).value||'',
-      mem:       ($('sub-mem')||{}).value||'',
-      name:      ($('sub-name')||{}).value||'',
-    };
     const r = await fetch(cfg.serverUrl+'/api/sbatch', { method:'POST', headers, body:JSON.stringify(params), signal:AbortSignal.timeout(35000) });
     const data = await r.json();
     if (result) { result.style.display=''; result.className='submit-result '+(data.ok?'ok':'err'); result.textContent=(data.ok?data.out:data.err)||''; }
@@ -2243,14 +2382,14 @@ function renderShareCards(raw) {
     return {...acc,users:am?su:vu};
   }).filter(Boolean);
   const sorted=sortShareAccounts(filtered);
-  const warnCount = sorted.filter(acc => classifyFairshare(acc.fairShare) === 'warn').length;
-  const criticalCount = sorted.filter(acc => classifyFairshare(acc.fairShare) === 'critical').length;
+  const warnCount = sorted.filter(acc => classifyFairshare(acc) === 'warn').length;
+  const criticalCount = sorted.filter(acc => classifyFairshare(acc) === 'critical').length;
   if(!sorted.length){container.innerHTML=`<div style="padding:16px"><div class="empty-state"><div class="empty-icon">🔎</div><div>No fairshare matches for "${esc(shareFilter)}".</div></div></div>`;syncShareSortControls();return;}
   container.innerHTML=`<div style="padding:16px"><div class="share-toolbar"><span class="share-toolbar-label">SORTING LIVE VIEW</span><span class="share-summary">${sorted.length} of ${accounts.length} accounts • ${criticalCount} critical • ${warnCount} warning</span></div><div class="fairshare-container">${sorted.map(acc=>{
-    const severity=classifyFairshare(acc.fairShare);
+    const severity=classifyFairshare(acc);
     const riskChip=severity==='critical'?'<span class="account-risk critical">CRITICAL</span>':severity==='warn'?'<span class="account-risk warn">WATCH</span>':'';
     return `<div class="account-card ${severity==='ok'?'':severity}"><div class="card-header"><div class="card-title">${esc(acc.name)}</div><div style="display:flex;gap:6px;align-items:center">${riskChip}<span class="priority-chip ${acc.fairShare>=0.75?'high':''}">${acc.users.length} users</span></div></div><div class="card-meta"><div class="metric-col"><div class="metric-label">RAW SHARES</div><div class="metric-val">${acc.rawShares.toFixed(2)}</div></div><div class="metric-col"><div class="metric-label">NORM SHARES</div><div class="metric-val">${acc.normShares.toFixed(4)}</div></div></div><div class="progress-row"><div class="progress-label"><span>FAIRSHARE</span><span>${(acc.fairShare*100).toFixed(1)}%</span></div><div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,acc.fairShare*100)}%"></div></div></div><div class="progress-row"><div class="progress-label"><span>USAGE</span><span>${(acc.effUse*100).toFixed(1)}%</span></div><div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,acc.effUse*100)}%;background:linear-gradient(90deg,#ff9500,#ff4466)"></div></div></div>${acc.users.length?`<div class="user-list">${acc.users.map(u=>{
-      const userSeverity=classifyFairshare(u.fairShare);
+      const userSeverity=classifyFairshare(u);
       return `<div class="user-item ${userSeverity==='ok'?'':userSeverity}"><span class="user-name">${esc(u.user)}</span><span class="user-share"><span>${u.shares} shares</span><span class="user-fairshare">${((u.fairShare||0)*100).toFixed(1)}%</span></span></div>`;
     }).join('')}</div>`:''}</div>`;
   }).join('')}</div></div>`;
@@ -2593,6 +2732,14 @@ const notifBtn=$('btn-notif');
 if(notifBtn) notifBtn.onclick=requestNotifPermission;
 const submitBtn=$('btn-submit-job');
 if(submitBtn) submitBtn.onclick=submitJob;
+const testConnBtn = $('btn-test-connection');
+if (testConnBtn) testConnBtn.onclick = testServerConnection;
+const submitTemplateLoadBtn = $('btn-submit-template-load');
+if (submitTemplateLoadBtn) submitTemplateLoadBtn.onclick = loadSubmitTemplate;
+const submitTemplateSaveBtn = $('btn-submit-template-save');
+if (submitTemplateSaveBtn) submitTemplateSaveBtn.onclick = saveCurrentAsSubmitTemplate;
+const submitTemplateDeleteBtn = $('btn-submit-template-delete');
+if (submitTemplateDeleteBtn) submitTemplateDeleteBtn.onclick = deleteSelectedSubmitTemplate;
 
 // Export dropdowns
 setupDropdown('btn-export-queue','drop-export-queue');
@@ -2640,6 +2787,7 @@ if($('cfg-notif')) $('cfg-notif').checked=cfg.desktopNotif||false;
 if($('cfg-webhook')) $('cfg-webhook').value=cfg.webhookUrl||'';
 if($('cfg-auth-token')) $('cfg-auth-token').value=cfg.authToken||'';
 syncUiControlsFromState();
+renderSubmitTemplates();
 updateRunsExpandButton();
 syncShareSortControls();
 if(cfg.demoMode){$('btn-demo').classList.add('active');$('btn-live').classList.remove('active');}

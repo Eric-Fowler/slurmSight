@@ -415,6 +415,14 @@
           <div class="setting-help" style="color:var(--warn)">⚠ Job submission is disabled on this server. Set <code>enable_submit: true</code> in <code>config.json</code>.</div>
         </div>
         <div id="submit-form-fields">
+          <div class="submit-template-bar">
+            <select id="submit-template-select" class="btn-sm" aria-label="Saved submit templates">
+              <option value="">Saved templates…</option>
+            </select>
+            <button class="btn-sm" id="btn-submit-template-load">Load</button>
+            <button class="btn-sm" id="btn-submit-template-save">Save Template</button>
+            <button class="btn-sm" id="btn-submit-template-delete">Delete</button>
+          </div>
           <div class="setting-group">
             <label>SCRIPT PATH <span style="color:var(--danger)">*</span></label>
             <input type="text" id="sub-script" placeholder="/home/user/job.sh" autocomplete="off"/>
@@ -470,6 +478,14 @@
           <label>AUTH TOKEN</label>
           <input type="password" id="cfg-auth-token" placeholder="Leave blank if auth is disabled" autocomplete="new-password"/>
           <div class="setting-help">Matches the <code>auth_token</code> value in server's <code>config.json</code>.</div>
+        </div>
+
+        <div class="setting-group">
+          <label>CONNECTION TEST</label>
+          <div class="setting-row">
+            <button class="btn-sm" id="btn-test-connection">TEST CONNECTION</button>
+            <span id="cfg-test-result" class="setting-help">Uses the currently entered URL and token.</span>
+          </div>
         </div>
 
         <div class="setting-group">

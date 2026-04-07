@@ -530,6 +530,9 @@ tbody tr.wave-scan{
 .setting-group input[type=text]:focus,
 .setting-group input[type=password]:focus{border-color:var(--primary);box-shadow:var(--glow-primary)}
 .setting-help{font-size:11px;color:var(--text-dimmer)}
+.setting-help.ok{color:var(--success)}
+.setting-help.err{color:var(--danger)}
+.setting-help.warn{color:var(--warn)}
 code{font-family:var(--font-mono);background:var(--surf2);padding:2px 5px;border-radius:4px;font-size:11px}
 .setting-row{display:flex;align-items:center;gap:12px}
 .setting-group input[type=range]{
@@ -1102,6 +1105,12 @@ tbody tr[data-jid].expanded{background:rgba(0,229,255,.12)}
 .submit-form-row{
   display:grid;grid-template-columns:1fr 1fr;gap:14px;
 }
+.submit-template-bar{
+  display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  padding:10px 12px;border-radius:8px;background:var(--surf);border:1px solid var(--border);
+  margin-bottom:14px;
+}
+.submit-template-bar select{min-width:190px}
 .btn-submit-job{
   align-self:flex-start;padding:11px 28px;border-radius:8px;
   background:var(--success-dim);border:1px solid var(--success);
