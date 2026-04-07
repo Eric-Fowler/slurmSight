@@ -830,9 +830,9 @@ function highlightTextContent(content, fileName) {
   }
 
   if (ext === '.sh' || ext === '.slurm' || name.endsWith('.bash')) {
-    html = html.replace(/(^|\n)(\s*#.*?)(?=\n|$)/g, '$1<span class="tok-com">$2</span>');
     html = html.replace(/("[^"\n]*"|'[^'\n]*')/g, '<span class="tok-str">$1</span>');
     html = html.replace(/\b(if|then|else|fi|for|while|do|done|case|esac|function|echo|cd|export|module|srun|sbatch)\b/g, '<span class="tok-kw">$1</span>');
+    html = html.replace(/(^|\n)(\s*#.*?)(?=\n|$)/g, '$1<span class="tok-com">$2</span>');
     return html;
   }
 
