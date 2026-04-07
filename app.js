@@ -13,6 +13,7 @@ const $ = id => document.getElementById(id);
 const CFG_KEY = 'slurmSight_cfg';
 const RUNS_MODE_KEY = 'slurmSight_runs_open_mode';
 const UI_STATE_KEY = 'slurmSight_ui_state';
+const SHARE_THRESH_KEY = 'slurmSight_share_thresholds';
 let cfg = {
   serverUrl:      'http://localhost:8787',
   refreshInterval: 5,
@@ -125,6 +126,7 @@ let usersExpanded       = {};
 let usersJobNameExpanded = {};
 let runsSummaryRows = [];
 let runsSummarySort = { key: 'batch', direction: 'asc', type: 'string' };
+let currentBatchRuns = [];
 let runsSearch = '';
 let selectedBatch = '';
 let selectedRun = '';
@@ -137,6 +139,13 @@ let runsViewerExpanded = false;
 let serverCapabilities  = { enable_submit: false, enable_metrics: false, enable_runs_browser: true };
 let modalRefreshTimer = null;
 let activePanel = 'queue';
+let shareWarnThreshold = 0.6;
+let shareCriticalThreshold = 0.3;
+try {
+  const savedThresholds = JSON.parse(localStorage.getItem(SHARE_THRESH_KEY) || '{}');
+  shareWarnThreshold = Math.max(0, Math.min(1, Number(savedThresholds.warn) || shareWarnThreshold));
+  shareCriticalThreshold = Math.max(0, Math.min(1, Number(savedThresholds.critical) || shareCriticalThreshold));
+} catch (_) {}
 
 // ─────────────────────────────────────────
 // Search filter helper
@@ -367,7 +376,57 @@ function syncUiControlsFromState() {
   if ($('users-search')) $('users-search').value = usersSearch;
   if ($('runs-search')) $('runs-search').value = runsSearch;
   if ($('runs-open-mode')) $('runs-open-mode').value = runsOpenMode;
+  if ($('share-warn-threshold')) $('share-warn-threshold').value = shareWarnThreshold.toFixed(2);
+  if ($('share-critical-threshold')) $('share-critical-threshold').value = shareCriticalThreshold.toFixed(2);
   syncShareSortControls();
+}
+
+function saveShareThresholds() {
+  localStorage.setItem(SHARE_THRESH_KEY, JSON.stringify({ warn: shareWarnThreshold, critical: shareCriticalThreshold }));
+}
+
+function classifyFairshare(fairShare) {
+  const value = Number(fairShare) || 0;
+  if (value < shareCriticalThreshold) return 'critical';
+  if (value < shareWarnThreshold) return 'warn';
+  return 'ok';
+}
+
+function formatRelativeTs(seconds) {
+  const ts = Number(seconds) || 0;
+  if (!ts) return 'N/A';
+  return relTime(new Date(ts * 1000).toISOString());
+}
+
+function openRunsMetaArtifact(action) {
+  const run = currentBatchRuns.find(item => item.run === selectedRun);
+  if (!run || !selectedBatch) return;
+  if (action === 'config' && run.text_files.includes('run-config.json')) {
+    selectedTextFile = 'run-config.json';
+    selectedRunFile = '';
+    selectedGroupHtml = '';
+    selectedGroupText = '';
+    loadSelectedRunText();
+  } else if (action === 'manifest' && run.text_files.includes('manifest.json')) {
+    selectedTextFile = 'manifest.json';
+    selectedRunFile = '';
+    selectedGroupHtml = '';
+    selectedGroupText = '';
+    loadSelectedRunText();
+  } else if (action === 'firstHtml' && run.html_files && run.html_files.length) {
+    selectedRunFile = run.html_files[0];
+    selectedTextFile = '';
+    selectedGroupHtml = '';
+    selectedGroupText = '';
+    openSelectedRunHtml();
+  } else if (action === 'firstText' && run.text_files && run.text_files.length) {
+    selectedTextFile = run.text_files[0];
+    selectedRunFile = '';
+    selectedGroupHtml = '';
+    selectedGroupText = '';
+    loadSelectedRunText();
+  }
+  renderRunList(selectedBatch, currentBatchRuns);
 }
 
 // ─────────────────────────────────────────
@@ -1082,7 +1141,7 @@ function showRunsTextViewer(text, fileName = '', highlight = true) {
   }
 }
 
-function renderRunsMeta(metadata) {
+function renderRunsMeta(metadata, summary = null) {
   const meta = $('runs-meta');
   if (!meta) return;
   const cfgMeta = metadata && metadata.run_config && typeof metadata.run_config === 'object'
@@ -1095,13 +1154,38 @@ function renderRunsMeta(metadata) {
   const runName = cfgMeta && cfgMeta.run_name ? cfgMeta.run_name : 'N/A';
   const runId = cfgMeta && cfgMeta.run_id ? cfgMeta.run_id : 'N/A';
   const filesCount = manifest && Array.isArray(manifest.files) ? manifest.files.length : 'N/A';
+  const htmlCount = summary ? (summary.html_files || []).length : 0;
+  const textCount = summary ? (summary.text_files || []).length : 0;
+  const statusLabel = summary ? (summary.completed ? 'COMPLETE' : 'IN PROGRESS') : (manifest ? 'COMPLETE' : 'UNKNOWN');
+  const statusCls = statusLabel === 'COMPLETE' ? 'ok' : 'warn';
+  const lastModified = summary ? formatRelativeTs(summary.last_modified) : 'N/A';
+  const actions = [];
+  if (summary && summary.has_config && summary.text_files.includes('run-config.json')) actions.push('<button class="runs-meta-btn" data-run-meta-action="config">Open run-config.json</button>');
+  if (summary && summary.has_manifest && summary.text_files.includes('manifest.json')) actions.push('<button class="runs-meta-btn" data-run-meta-action="manifest">Open manifest.json</button>');
+  if (summary && summary.html_files && summary.html_files.length) actions.push('<button class="runs-meta-btn" data-run-meta-action="firstHtml">Open first HTML</button>');
+  if (summary && summary.text_files && summary.text_files.length) actions.push('<button class="runs-meta-btn" data-run-meta-action="firstText">Open first text</button>');
 
   meta.innerHTML = `
+    <div class="runs-meta-top">
+      <span class="runs-meta-chip ${statusCls}">${esc(statusLabel)}</span>
+      <span class="runs-meta-chip info">${esc(htmlCount)} HTML</span>
+      <span class="runs-meta-chip info">${esc(textCount)} TEXT</span>
+      <span class="runs-meta-chip">UPDATED ${esc(lastModified)}</span>
+    </div>
     <div class="runs-meta-grid">
       <div><span class="runs-meta-k">RUN NAME</span><span class="runs-meta-v">${esc(runName)}</span></div>
       <div><span class="runs-meta-k">RUN ID</span><span class="runs-meta-v">${esc(runId)}</span></div>
+      <div><span class="runs-meta-k">STATUS</span><span class="runs-meta-v">${esc(statusLabel)}</span></div>
       <div><span class="runs-meta-k">MANIFEST FILES</span><span class="runs-meta-v">${esc(filesCount)}</span></div>
-    </div>`;
+      <div><span class="runs-meta-k">RUN HTML FILES</span><span class="runs-meta-v">${esc(htmlCount)}</span></div>
+      <div><span class="runs-meta-k">RUN TEXT FILES</span><span class="runs-meta-v">${esc(textCount)}</span></div>
+      <div><span class="runs-meta-k">LAST MODIFIED</span><span class="runs-meta-v">${esc(lastModified)}</span></div>
+    </div>
+    ${actions.length ? `<div class="runs-meta-actions">${actions.join('')}</div>` : ''}`;
+
+  meta.querySelectorAll('[data-run-meta-action]').forEach(btn => {
+    btn.addEventListener('click', () => openRunsMetaArtifact(btn.dataset.runMetaAction || ''));
+  });
 }
 
 async function fetchRunMeta(batch, run) {
@@ -1120,7 +1204,8 @@ async function fetchRunMeta(batch, run) {
       meta.innerHTML = '<div class="runs-meta-empty">Metadata unavailable.</div>';
       return;
     }
-    renderRunsMeta(data.metadata || {});
+    const summary = currentBatchRuns.find(item => item.run === run) || null;
+    renderRunsMeta(data.metadata || {}, summary);
   } catch (_) {
     meta.innerHTML = '<div class="runs-meta-empty">Metadata unavailable.</div>';
   }
@@ -1329,6 +1414,7 @@ async function fetchRunsForBatch(batch) {
       return;
     }
     const runs = data.runs || [];
+    currentBatchRuns = runs;
     const groupFiles = data.group_files || { html_files: [], text_files: [] };
     if (!selectedRun || !runs.some(rn => rn.run === selectedRun)) {
       selectedRun = runs.length ? runs[0].run : '';
@@ -1341,6 +1427,7 @@ async function fetchRunsForBatch(batch) {
     renderRunList(batch, runs);
     if (selectedRun) fetchRunMeta(batch, selectedRun);
   } catch (e) {
+    currentBatchRuns = [];
     list.innerHTML = `<div class="empty-state" style="color:var(--danger)">${esc(e.message)}</div>`;
   }
 }
@@ -2137,6 +2224,10 @@ function syncShareSortControls() {
   if(f) f.value=shareFilter;
   if(k) k.value=shareSort.key;
   if(d) d.textContent=shareSort.direction==='asc'?'↑ ASC':'↓ DESC';
+  const warn = $('share-warn-threshold');
+  const critical = $('share-critical-threshold');
+  if (warn) warn.value = shareWarnThreshold.toFixed(2);
+  if (critical) critical.value = shareCriticalThreshold.toFixed(2);
 }
 
 function renderShareCards(raw) {
@@ -2152,8 +2243,17 @@ function renderShareCards(raw) {
     return {...acc,users:am?su:vu};
   }).filter(Boolean);
   const sorted=sortShareAccounts(filtered);
+  const warnCount = sorted.filter(acc => classifyFairshare(acc.fairShare) === 'warn').length;
+  const criticalCount = sorted.filter(acc => classifyFairshare(acc.fairShare) === 'critical').length;
   if(!sorted.length){container.innerHTML=`<div style="padding:16px"><div class="empty-state"><div class="empty-icon">🔎</div><div>No fairshare matches for "${esc(shareFilter)}".</div></div></div>`;syncShareSortControls();return;}
-  container.innerHTML=`<div style="padding:16px"><div class="share-toolbar"><span class="share-toolbar-label">SORTING LIVE VIEW</span><span class="share-summary">${sorted.length} of ${accounts.length} accounts</span></div><div class="fairshare-container">${sorted.map(acc=>`<div class="account-card"><div class="card-header"><div class="card-title">${esc(acc.name)}</div><span class="priority-chip ${acc.fairShare>=0.75?'high':''}">${acc.users.length} users</span></div><div class="card-meta"><div class="metric-col"><div class="metric-label">RAW SHARES</div><div class="metric-val">${acc.rawShares.toFixed(2)}</div></div><div class="metric-col"><div class="metric-label">NORM SHARES</div><div class="metric-val">${acc.normShares.toFixed(4)}</div></div></div><div class="progress-row"><div class="progress-label"><span>FAIRSHARE</span><span>${(acc.fairShare*100).toFixed(1)}%</span></div><div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,acc.fairShare*100)}%"></div></div></div><div class="progress-row"><div class="progress-label"><span>USAGE</span><span>${(acc.effUse*100).toFixed(1)}%</span></div><div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,acc.effUse*100)}%;background:linear-gradient(90deg,#ff9500,#ff4466)"></div></div></div>${acc.users.length?`<div class="user-list">${acc.users.map(u=>`<div class="user-item"><span class="user-name">${esc(u.user)}</span><span class="user-share"><span>${u.shares} shares</span><span class="user-fairshare">${((u.fairShare||0)*100).toFixed(1)}%</span></span></div>`).join('')}</div>`:''}</div>`).join('')}</div></div>`;
+  container.innerHTML=`<div style="padding:16px"><div class="share-toolbar"><span class="share-toolbar-label">SORTING LIVE VIEW</span><span class="share-summary">${sorted.length} of ${accounts.length} accounts • ${criticalCount} critical • ${warnCount} warning</span></div><div class="fairshare-container">${sorted.map(acc=>{
+    const severity=classifyFairshare(acc.fairShare);
+    const riskChip=severity==='critical'?'<span class="account-risk critical">CRITICAL</span>':severity==='warn'?'<span class="account-risk warn">WATCH</span>':'';
+    return `<div class="account-card ${severity==='ok'?'':severity}"><div class="card-header"><div class="card-title">${esc(acc.name)}</div><div style="display:flex;gap:6px;align-items:center">${riskChip}<span class="priority-chip ${acc.fairShare>=0.75?'high':''}">${acc.users.length} users</span></div></div><div class="card-meta"><div class="metric-col"><div class="metric-label">RAW SHARES</div><div class="metric-val">${acc.rawShares.toFixed(2)}</div></div><div class="metric-col"><div class="metric-label">NORM SHARES</div><div class="metric-val">${acc.normShares.toFixed(4)}</div></div></div><div class="progress-row"><div class="progress-label"><span>FAIRSHARE</span><span>${(acc.fairShare*100).toFixed(1)}%</span></div><div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,acc.fairShare*100)}%"></div></div></div><div class="progress-row"><div class="progress-label"><span>USAGE</span><span>${(acc.effUse*100).toFixed(1)}%</span></div><div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,acc.effUse*100)}%;background:linear-gradient(90deg,#ff9500,#ff4466)"></div></div></div>${acc.users.length?`<div class="user-list">${acc.users.map(u=>{
+      const userSeverity=classifyFairshare(u.fairShare);
+      return `<div class="user-item ${userSeverity==='ok'?'':userSeverity}"><span class="user-name">${esc(u.user)}</span><span class="user-share"><span>${u.shares} shares</span><span class="user-fairshare">${((u.fairShare||0)*100).toFixed(1)}%</span></span></div>`;
+    }).join('')}</div>`:''}</div>`;
+  }).join('')}</div></div>`;
   syncShareSortControls();
 }
 
@@ -2448,6 +2548,21 @@ $('btn-runs-expand').onclick = toggleRunsViewerExpanded;
 $('share-filter').oninput = function(){shareFilter=this.value;if(shareRaw)renderShareCards(shareRaw);persistUiState();};
 $('share-sort-key').onchange = function(){shareSort.key=this.value;if(shareRaw)renderShareCards(shareRaw);persistUiState();};
 $('btn-share-sort-dir').onclick=()=>{shareSort.direction=shareSort.direction==='asc'?'desc':'asc';if(shareRaw)renderShareCards(shareRaw);persistUiState();};
+const shareWarnInput = $('share-warn-threshold');
+if (shareWarnInput) shareWarnInput.onchange = function(){
+  shareWarnThreshold = Math.max(0, Math.min(1, Number(this.value) || 0.6));
+  if (shareCriticalThreshold > shareWarnThreshold) shareCriticalThreshold = shareWarnThreshold;
+  saveShareThresholds();
+  syncShareSortControls();
+  if (shareRaw) renderShareCards(shareRaw);
+};
+const shareCriticalInput = $('share-critical-threshold');
+if (shareCriticalInput) shareCriticalInput.onchange = function(){
+  shareCriticalThreshold = Math.max(0, Math.min(shareWarnThreshold, Number(this.value) || 0.3));
+  saveShareThresholds();
+  syncShareSortControls();
+  if (shareRaw) renderShareCards(shareRaw);
+};
 
 const qSearchEl=$('queue-search');
 if(qSearchEl) qSearchEl.oninput=function(){queueSearch=this.value;renderQueue(Object.values(prevJobs));persistUiState();};

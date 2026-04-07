@@ -136,6 +136,8 @@
         <h2>FAIRSHARE</h2>
         <div class="panel-hdr-right">
           <input type="text" id="share-filter" class="search-input" placeholder="Filter account / user…" aria-label="Filter fairshare"/>
+          <input type="number" id="share-warn-threshold" class="share-control-input" min="0" max="1" step="0.05" placeholder="Warn < 0.60" aria-label="Fairshare warning threshold"/>
+          <input type="number" id="share-critical-threshold" class="share-control-input" min="0" max="1" step="0.05" placeholder="Critical < 0.30" aria-label="Fairshare critical threshold"/>
           <select id="share-sort-key" class="btn-sm" aria-label="Sort fairshare by">
             <option value="fairShare">FairShare</option>
             <option value="effUse">Eff Usage</option>
