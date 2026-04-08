@@ -498,6 +498,52 @@
               <button class="btn-sm" id="btn-save-server-config">SAVE CONFIG</button>
               <span id="server-config-status" class="setting-help">Edit server config.json and save. Restart server afterward.</span>
             </div>
+            <div class="cfg-server-form" id="cfg-server-form">
+              <div class="cfg-server-form-grid">
+                <label class="cfg-server-field">
+                  <span>PORT</span>
+                  <input type="number" id="cfg-srv-port" min="1" max="65535" step="1" />
+                </label>
+                <label class="cfg-server-field">
+                  <span>METRICS INTERVAL (s)</span>
+                  <input type="number" id="cfg-srv-metrics-interval" min="10" step="1" />
+                </label>
+                <label class="cfg-server-field">
+                  <span>RATE LIMIT SCANCEL (/min)</span>
+                  <input type="number" id="cfg-srv-rate-limit-scancel" min="0" step="1" />
+                </label>
+                <label class="cfg-server-field">
+                  <span>SCRATCH ROOT</span>
+                  <input type="text" id="cfg-srv-scratch-root" />
+                </label>
+                <label class="cfg-server-field">
+                  <span>METRICS DB</span>
+                  <input type="text" id="cfg-srv-metrics-db" />
+                </label>
+                <label class="cfg-server-field">
+                  <span>AUTH TOKEN</span>
+                  <input type="text" id="cfg-srv-auth-token" />
+                </label>
+                <label class="cfg-server-field">
+                  <span>SSL CERT</span>
+                  <input type="text" id="cfg-srv-ssl-cert" />
+                </label>
+                <label class="cfg-server-field">
+                  <span>SSL KEY</span>
+                  <input type="text" id="cfg-srv-ssl-key" />
+                </label>
+              </div>
+              <div class="cfg-server-checks">
+                <label><input type="checkbox" id="cfg-srv-enable-all-users" /> ENABLE ALL USERS</label>
+                <label><input type="checkbox" id="cfg-srv-enable-submit" /> ENABLE SUBMIT</label>
+                <label><input type="checkbox" id="cfg-srv-enable-metrics" /> ENABLE METRICS</label>
+                <label><input type="checkbox" id="cfg-srv-enable-runs-browser" /> ENABLE RUNS BROWSER</label>
+              </div>
+              <div class="setting-row">
+                <button class="btn-sm" id="btn-server-config-sync-from-json">SYNC FORM FROM JSON</button>
+                <button class="btn-sm" id="btn-server-config-apply-form">APPLY FORM TO JSON</button>
+              </div>
+            </div>
             <textarea id="cfg-server-json" class="cfg-json-editor" spellcheck="false" placeholder="Click LOAD CONFIG to edit server config.json"></textarea>
           </div>
 

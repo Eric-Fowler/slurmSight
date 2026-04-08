@@ -3,7 +3,7 @@
   "enable_all_users": true,
   "enable_metrics": true,
   "enable_runs_browser": true,
-  "enable_submit": true,
+  "enable_submit": false,
   "metrics_db": "metrics.db",
   "metrics_interval": 60,
   "port": 8787,

@@ -556,6 +556,52 @@ tbody tr.wave-scan{
 .setting-help.ok{color:var(--success)}
 .setting-help.err{color:var(--danger)}
 .setting-help.warn{color:var(--warn)}
+.cfg-server-form{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.cfg-server-form-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:8px;
+}
+.cfg-server-field{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  font-size:11px;
+  letter-spacing:1px;
+  color:var(--text-dimmer);
+}
+.cfg-server-field input[type=text],
+.cfg-server-field input[type=number]{
+  padding:8px 10px;
+  background:var(--surf);
+  border:1px solid var(--border);
+  border-radius:7px;
+  color:var(--text);
+  font-family:var(--font-mono);
+  font-size:12px;
+  outline:none;
+}
+.cfg-server-field input[type=text]:focus,
+.cfg-server-field input[type=number]:focus{
+  border-color:var(--primary);
+  box-shadow:var(--glow-primary);
+}
+.cfg-server-checks{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 14px;
+  font-size:11px;
+  color:var(--text-dim);
+}
+.cfg-server-checks label{display:inline-flex;align-items:center;gap:6px;letter-spacing:1px}
 .cfg-json-editor{
   width:100%;min-height:220px;resize:vertical;
   background:var(--bg2);border:1px solid var(--border);border-radius:8px;

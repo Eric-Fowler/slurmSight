@@ -144,6 +144,37 @@ let shareWarnThreshold = 0.6;
 let shareCriticalThreshold = 0.3;
 let submitTemplates = [];
 let metricsPartition = 'ALL';
+let serverConfigBaseline = '';
+let serverConfigDirty = false;
+let serverConfigLoadedOnce = false;
+const SERVER_CONFIG_FORM_FIELDS = [
+  { key: 'port', id: 'cfg-srv-port', type: 'int' },
+  { key: 'metrics_interval', id: 'cfg-srv-metrics-interval', type: 'int' },
+  { key: 'rate_limit_scancel', id: 'cfg-srv-rate-limit-scancel', type: 'int' },
+  { key: 'scratch_root', id: 'cfg-srv-scratch-root', type: 'string' },
+  { key: 'metrics_db', id: 'cfg-srv-metrics-db', type: 'string' },
+  { key: 'auth_token', id: 'cfg-srv-auth-token', type: 'string' },
+  { key: 'ssl_cert', id: 'cfg-srv-ssl-cert', type: 'string' },
+  { key: 'ssl_key', id: 'cfg-srv-ssl-key', type: 'string' },
+  { key: 'enable_all_users', id: 'cfg-srv-enable-all-users', type: 'bool' },
+  { key: 'enable_submit', id: 'cfg-srv-enable-submit', type: 'bool' },
+  { key: 'enable_metrics', id: 'cfg-srv-enable-metrics', type: 'bool' },
+  { key: 'enable_runs_browser', id: 'cfg-srv-enable-runs-browser', type: 'bool' },
+];
+const SERVER_CONFIG_DEFAULTS = {
+  port: 8787,
+  auth_token: '',
+  ssl_cert: '',
+  ssl_key: '',
+  enable_all_users: false,
+  enable_submit: false,
+  enable_metrics: false,
+  enable_runs_browser: true,
+  scratch_root: '/storage/home/hcoda1/5/efowler34/scratch',
+  metrics_db: 'metrics.db',
+  metrics_interval: 60,
+  rate_limit_scancel: 10,
+};
 try {
   const savedThresholds = JSON.parse(localStorage.getItem(SHARE_THRESH_KEY) || '{}');
   shareWarnThreshold = Math.max(0, Math.min(1, Number(savedThresholds.warn) || shareWarnThreshold));
@@ -1247,7 +1278,131 @@ function getSettingsConnection() {
   };
 }
 
-async function loadServerConfigFile() {
+function populateServerConfigForm(configObj = {}) {
+  SERVER_CONFIG_FORM_FIELDS.forEach(field => {
+    const el = $(field.id);
+    if (!el) return;
+    const fallback = SERVER_CONFIG_DEFAULTS[field.key];
+    const value = Object.prototype.hasOwnProperty.call(configObj, field.key) ? configObj[field.key] : fallback;
+    if (field.type === 'bool') {
+      el.checked = !!value;
+    } else {
+      el.value = value == null ? '' : String(value);
+    }
+  });
+}
+
+function parseServerConfigEditor() {
+  const editor = $('cfg-server-json');
+  if (!editor) return null;
+  try {
+    const parsed = JSON.parse(editor.value || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function syncServerConfigFormFromJson(options = {}) {
+  const silent = !!options.silent;
+  const status = $('server-config-status');
+  const parsed = parseServerConfigEditor();
+  if (!parsed) {
+    if (!silent && status) {
+      status.className = 'setting-help err';
+      status.textContent = 'Cannot sync form: JSON is invalid.';
+    }
+    return false;
+  }
+  populateServerConfigForm(parsed);
+  if (!silent && status) {
+    status.className = 'setting-help ok';
+    status.textContent = 'Form synced from JSON editor.';
+  }
+  return true;
+}
+
+function applyServerConfigFormToJson() {
+  const status = $('server-config-status');
+  const editor = $('cfg-server-json');
+  if (!editor) return;
+  const base = parseServerConfigEditor() || {};
+  const next = { ...base };
+
+  for (const field of SERVER_CONFIG_FORM_FIELDS) {
+    const el = $(field.id);
+    if (!el) continue;
+    if (field.type === 'bool') {
+      next[field.key] = !!el.checked;
+      continue;
+    }
+    if (field.type === 'int') {
+      const raw = String(el.value || '').trim();
+      if (!raw) {
+        if (status) {
+          status.className = 'setting-help err';
+          status.textContent = `Missing value for ${field.key}.`;
+        }
+        return;
+      }
+      const num = Number(raw);
+      if (!Number.isInteger(num)) {
+        if (status) {
+          status.className = 'setting-help err';
+          status.textContent = `Invalid integer for ${field.key}.`;
+        }
+        return;
+      }
+      next[field.key] = num;
+      continue;
+    }
+    next[field.key] = String(el.value || '');
+  }
+
+  editor.value = JSON.stringify(next, null, 2);
+  trackServerConfigEditorDirty();
+  if (status && !serverConfigDirty) {
+    status.className = 'setting-help ok';
+    status.textContent = 'Form applied to JSON editor.';
+  }
+}
+
+function normalizeConfigJson(text) {
+  try {
+    return JSON.stringify(JSON.parse(String(text || '')));
+  } catch (_) {
+    return null;
+  }
+}
+
+function setServerConfigDirtyState(isDirty) {
+  serverConfigDirty = !!isDirty;
+  const status = $('server-config-status');
+  if (!status) return;
+  if (serverConfigDirty) {
+    if (!status.className.includes('err')) {
+      status.className = 'setting-help warn';
+      status.textContent = 'Unsaved server config changes.';
+    }
+  } else if (status.className.includes('warn')) {
+    status.className = 'setting-help ok';
+    status.textContent = 'Server config is saved.';
+  }
+}
+
+function trackServerConfigEditorDirty() {
+  const editor = $('cfg-server-json');
+  if (!editor) return;
+  const current = normalizeConfigJson(editor.value);
+  if (current === null) {
+    setServerConfigDirtyState(true);
+    return;
+  }
+  setServerConfigDirtyState(serverConfigBaseline !== '' && current !== serverConfigBaseline);
+}
+
+async function loadServerConfigFile(options = {}) {
+  const silent = !!options.silent;
   const status = $('server-config-status');
   const editor = $('cfg-server-json');
   const btn = $('btn-load-server-config');
@@ -1258,18 +1413,23 @@ async function loadServerConfigFile() {
     return;
   }
   if (btn) { btn.disabled = true; btn.textContent = 'LOADING…'; }
-  if (status) { status.className = 'setting-help'; status.textContent = 'Loading server config…'; }
+  if (status && !silent) { status.className = 'setting-help'; status.textContent = 'Loading server config…'; }
   try {
     const r = await fetch(serverUrl + '/api/config-file', { signal: AbortSignal.timeout(8000), headers });
     const data = await r.json();
     if (!r.ok || !data.ok) throw new Error(data.err || `HTTP ${r.status}`);
     editor.value = JSON.stringify(data.config || {}, null, 2);
+    populateServerConfigForm(data.config || {});
+    const normalized = normalizeConfigJson(editor.value);
+    serverConfigBaseline = normalized || '';
+    serverConfigLoadedOnce = true;
+    setServerConfigDirtyState(false);
     if (status) {
       status.className = 'setting-help ok';
       status.textContent = `Loaded ${data.path || 'config.json'}`;
     }
   } catch (e) {
-    if (status) {
+    if (status && !silent) {
       status.className = 'setting-help err';
       status.textContent = 'Load failed: ' + (e.message || e);
     }
@@ -1310,6 +1470,11 @@ async function saveServerConfigFile() {
     const data = await r.json();
     if (!r.ok || !data.ok) throw new Error(data.err || `HTTP ${r.status}`);
     editor.value = JSON.stringify(data.config || configObj, null, 2);
+    populateServerConfigForm(data.config || configObj || {});
+    const normalized = normalizeConfigJson(editor.value);
+    serverConfigBaseline = normalized || '';
+    setServerConfigDirtyState(false);
+    serverConfigLoadedOnce = true;
     if (status) {
       status.className = data.restart_required ? 'setting-help warn' : 'setting-help ok';
       status.textContent = data.note || 'Config saved.';
@@ -2183,6 +2348,10 @@ function setupTableSorting(tableSelector, sortState, onSort) {
 
 function activatePanel(panelName, options = {}) {
   const panel = TAB_PANELS.includes(panelName) ? panelName : 'queue';
+  if (activePanel === 'settings' && panel !== 'settings' && serverConfigDirty) {
+    const leave = confirm('You have unsaved server config changes. Leave Settings anyway?');
+    if (!leave) return;
+  }
   const shouldFetch = options.fetch !== false;
   activePanel = panel;
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.panel === panel));
@@ -2197,6 +2366,9 @@ function activatePanel(panelName, options = {}) {
     else if(panel==='runs') fetchRunsSummary();
     else if(panel==='users') fetchUsersQueue();
     else if(panel==='metrics') fetchMetrics();
+  }
+  if (panel === 'settings' && !serverConfigLoadedOnce) {
+    loadServerConfigFile({ silent: true });
   }
   persistUiState();
 }
@@ -2937,6 +3109,14 @@ const loadCfgBtn = $('btn-load-server-config');
 if (loadCfgBtn) loadCfgBtn.onclick = loadServerConfigFile;
 const saveCfgBtn = $('btn-save-server-config');
 if (saveCfgBtn) saveCfgBtn.onclick = saveServerConfigFile;
+const cfgJsonEditor = $('cfg-server-json');
+if (cfgJsonEditor) cfgJsonEditor.addEventListener('input', trackServerConfigEditorDirty);
+if (cfgJsonEditor) cfgJsonEditor.addEventListener('blur', () => syncServerConfigFormFromJson({ silent: true }));
+const cfgSyncFormBtn = $('btn-server-config-sync-from-json');
+if (cfgSyncFormBtn) cfgSyncFormBtn.onclick = () => syncServerConfigFormFromJson({ silent: false });
+const cfgApplyFormBtn = $('btn-server-config-apply-form');
+if (cfgApplyFormBtn) cfgApplyFormBtn.onclick = applyServerConfigFormToJson;
+populateServerConfigForm();
 const submitTemplateLoadBtn = $('btn-submit-template-load');
 if (submitTemplateLoadBtn) submitTemplateLoadBtn.onclick = loadSubmitTemplate;
 const submitTemplateSaveBtn = $('btn-submit-template-save');
