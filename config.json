@@ -1,0 +1,14 @@
+{
+  "auth_token": "",
+  "enable_all_users": true,
+  "enable_metrics": true,
+  "enable_runs_browser": true,
+  "enable_submit": false,
+  "metrics_db": "metrics.db",
+  "metrics_interval": 60,
+  "port": 8787,
+  "rate_limit_scancel": 10,
+  "scratch_root": "/storage/home/hcoda1/5/efowler34/scratch",
+  "ssl_cert": "",
+  "ssl_key": ""
+}

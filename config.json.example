@@ -1,0 +1,31 @@
+{
+  "_comment": "Rename to config.json and adjust values. All keys are optional.",
+
+  "port": 8787,
+
+  "auth_token": "",
+  "_auth_token_help": "Set a shared secret (e.g. a long random string). Clients must send 'Authorization: Bearer <token>'.",
+
+  "ssl_cert": "",
+  "ssl_key": "",
+  "_ssl_help": "Paths to a PEM certificate and key file for HTTPS. Leave empty for plain HTTP.",
+
+  "enable_all_users": false,
+  "_all_users_help": "Set true to enable /api/squeueall (shows every user's jobs). Exposes cluster data — enable only for trusted networks.",
+
+  "enable_submit": false,
+  "_submit_help": "Set true to enable /api/sbatch (job submission form in the UI).",
+
+  "enable_metrics": false,
+  "_metrics_help": "Set true to record queue-depth snapshots to SQLite and show trend charts in the UI.",
+  "metrics_db": "metrics.db",
+  "metrics_interval": 60,
+
+  "enable_runs_browser": true,
+  "_runs_browser_help": "Enable /api/runs/* endpoints to browse run folders and load HTML artifacts from scratch_root.",
+  "scratch_root": "/storage/home/hcoda1/5/efowler34/scratch",
+  "_scratch_root_help": "Root directory for run browser. Browsing is locked inside this path.",
+
+  "rate_limit_scancel": 10,
+  "_rate_limit_help": "Maximum scancel API calls per IP address per minute. 0 = unlimited."
+}
